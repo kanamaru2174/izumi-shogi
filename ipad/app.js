@@ -229,7 +229,7 @@ $('excelCreate').onclick=async()=>{
   for(let i=shuffled.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]]}
   const players=shuffled.map((p,i)=>({...p,no:i+1,withdrawn:false,withdrawnRound:0}));
   const pairs=[];for(let i=0;i<players.length;i+=2)pairs.push({p1:players[i].no,p2:i+1<players.length?players[i+1].no:0});
-  return {name:excelPreparation.name,className:c.name,rounds:c.rounds,players,pairings:{1:pairs},results:{},drafts:{},currentRound:1,completed:false};
+  return {name:excelPreparation.name,className:c.name,templateSheetName:c.sheetName,rounds:c.rounds,players,pairings:{1:pairs},results:{},drafts:{},currentRound:1,completed:false};
  });
  activeClassIndex=0;d=tournamentClasses[0];
  try{setExcelTemplate(excelPreparation.sourceBytes);await yukFolder.write('対戦表_準備用.xlsx',new Blob([excelPreparation.sourceBytes]));await exportTournamentExcel(tournamentClasses,rankForClass)}catch(err){return say('大会用Excelの作成に失敗しました：'+err.message)}

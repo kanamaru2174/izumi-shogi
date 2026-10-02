@@ -31,7 +31,7 @@ async function parsePreparationXlsx(file){
   const className=String(sh.cells.B3||'').trim(),rounds=Number(sh.cells.D3);if(!className)throw Error(sh.name+'：B3のクラス名が空欄です');if(!Number.isInteger(rounds)||rounds<3||rounds>10)throw Error(sh.name+'：D3の回戦数は3～10にしてください');
   let players=[];for(let row=7;row<=200;row++){let no=sh.cells['B'+row],pname=String(sh.cells['C'+row]||'').trim();if(no===''||no===undefined){if(pname)throw Error(sh.name+'：'+row+'行の番号がありません');continue}if(Number(no)!==players.length+1||!pname)throw Error(sh.name+'：'+row+'行の番号・氏名を確認してください');players.push({no:Number(no),name:pname})}
   if(players.length<2||players.length>50||rounds>players.length-1)throw Error(sh.name+'：人数は2～50名、回戦数は人数−1以下にしてください');
-  if(new Set(players.map(p=>p.name)).size!==players.length)throw Error(sh.name+'：参加者名が重複しています');classes.push({name:className,rounds,players});
+  if(new Set(players.map(p=>p.name)).size!==players.length)throw Error(sh.name+'：参加者名が重複しています');classes.push({name:className,sheetName:sh.name,rounds,players});
  }
  if(!classes.length||classes.length>10)throw Error('クラス数は1～10にしてください');if(new Set(classes.map(c=>c.name)).size!==classes.length)throw Error('クラス名が重複しています');
  return {name,classes};
