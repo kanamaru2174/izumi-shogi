@@ -13,8 +13,13 @@
     if(!blob)throw Error('Excelファイルを生成できませんでした');
     // exportTournamentExcel stores the workbook in the virtual folder;
     // iPad requires a separate, explicit user-initiated download.
-    download(blob,'対戦表_大会用.xlsx');
-    alert('Excelの保存を開始しました。Safariのダウンロードを確認してください。');
+    const old=document.getElementById('ipadExcelReady');if(old)old.remove();
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');link.id='ipadExcelReady';link.href=url;
+    link.download='対戦表_大会用.xlsx';link.textContent='Excelファイルを保存（ここをタップ）';
+    link.style.cssText='display:inline-block;padding:14px;margin:8px;background:#e0f2e5;border:2px solid #237346;font-size:20px;color:#123';
+    document.getElementById('ipadExcel').after(link);
+    alert('Excelの準備ができました。緑色の「Excelファイルを保存」をタップしてください。');
   }catch(e){alert('Excel出力：'+e.message)}
 };
  const original=document.getElementById('folderMock');original.textContent='保存大会を再開';
