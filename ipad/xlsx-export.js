@@ -42,6 +42,12 @@ for(let n=7;n<7+cls.players.length;n++){
  row.setAttribute('ht','28');
  row.setAttribute('customHeight','1');
 }
-let heading=getRow(doc,5);putCell(doc,heading,stat+3,'直接対決');entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
+// Short, legible labels for spreadsheet viewers, without modifying game data.
+let heading=getRow(doc,5);
+heading.setAttribute('ht','48');
+heading.setAttribute('customHeight','1');
+putCell(doc,heading,stat+3,'直接対決');
+// Existing template already carries all round-specific merged headers and borders.
+entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
 async function buildTournamentExcel(classes,rankCallback){let entries=await unzipEntries(getExcelTemplate()),paths=sheetPaths(entries);for(let cls of classes)sheetUpdate(entries,paths,cls,true,rankCallback);return zipStored(entries)}
 async function exportTournamentExcel(classes,rankCallback){let blob=await buildTournamentExcel(classes,rankCallback);if(window.yukFolder?.handle){await window.yukFolder.write('対戦表_大会用.xlsx',blob);return blob}let url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='対戦表_大会用.xlsx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);return blob}
