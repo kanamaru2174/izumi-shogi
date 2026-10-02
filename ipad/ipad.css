@@ -1,0 +1,13 @@
+body{font-size:20px;-webkit-text-size-adjust:100%}main{padding:12px;max-width:100%}header h1{font-size:29px}button,.filebtn,select,input{font-size:20px!important;min-height:54px;touch-action:manipulation}button{padding:12px 18px}td,th{padding:12px 14px;min-height:55px}td select{min-width:82px;min-height:54px}#matches{max-height:62dvh;-webkit-overflow-scrolling:touch}#matches td.name,#matches th.name{min-width:155px}#matches td.note{min-width:350px}.toolbar,.topnav,.ipad-tools{gap:12px;flex-wrap:wrap}.ipad-tools{display:flex;padding:12px;background:#f0f6fb;border:1px solid #a4b9c9;margin:8px 0}.ipad-info{font-size:17px;line-height:1.6}.prepguide{font-size:19px}@media(max-width:850px){header h1{font-size:25px}main{padding:7px}button,.filebtn{min-height:56px}#matches{max-height:55dvh}}
+/* iPad overrides: loaded after original desktop stylesheet */
+#matches td,#matches th{padding:9px 8px!important;font-size:19px!important;line-height:1.4!important}
+#matches th.no,#matches td.no{min-width:62px!important;width:62px!important;left:0!important}
+#matches th.name,#matches td.name{min-width:170px!important;width:170px!important;left:62px!important}
+#matches th.result-cell,#matches td.result-cell{min-width:80px!important;width:80px!important}
+#matches th.opponent-cell,#matches td.opponent-cell{min-width:70px!important;width:70px!important}
+#matches td select{height:52px!important;min-height:52px!important;font-size:24px!important;border:2px solid #667e93!important;border-radius:8px!important;background:#fff!important}
+#matches .withdraw-cell input{width:28px!important;height:28px!important}
+#workspace>.toolbar:last-of-type button{font-size:20px!important;height:auto!important;min-height:56px!important;padding:10px 15px!important}
+#matches{overflow:auto!important;-webkit-overflow-scrolling:touch;max-height:62dvh}
+#matches td.note{min-width:380px!important}
+.ipad-tools button,.ipad-tools .filebtn{font-size:19px!important;min-height:56px!important}
