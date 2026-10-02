@@ -129,6 +129,7 @@ function showAux(kind){if(!d)return;currentAux=kind;let body=$('auxBody');body.r
   ];
   for(const [heading,lines] of sections){const h=el('h4',heading);body.append(h);const ul=el('ul');for(const line of lines){const li=el('li',line);li.style.marginBottom='7px';ul.append(li)}body.append(ul)}
   body.append(el('p','このWeb版は検証中です。V127との完全一致は実機試験が必要です。'));
+  const auto=el('button','自動入力（未入力対局のみ・テスト用）');auto.type='button';auto.id='ipadAutoFill';auto.className='primary';auto.onclick=()=>{if(confirm('未入力の対局にランダムで勝敗を入力します。実際の大会では使用しないでください。実行しますか？')){autoFillCurrentRound();showAux('help')}};body.append(auto);
  }}
 // V127 F5: fill only missing pairs, preserve existing results and withdrawals.
 function autoFillCurrentRound(){
