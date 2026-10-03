@@ -74,6 +74,25 @@ function fixSummaryLayout(doc,stat,styles){
   for(let i=0;i<8;i++){let m=doc.createElementNS(ns,'mergeCell');m.setAttribute('ref',colName(stat+i)+'5:'+colName(stat+i)+'6');merges.append(m)}
   merges.setAttribute('count',String(merges.children.length));
  }
+ // The supplied template retains formatted phantom cells after the final
+ // summary column. Remove them; otherwise Excel displays stray vertical rules.
+ for(const row of doc.getElementsByTagName('row')){
+  for(const cell of [...row.children])
+   if(cell.localName==='c'&&cellColumn(cell.getAttribute('r'))>last)cell.remove();
+ }
+ for(const col of [...cols.children]){
+  if(col.localName!=='col')continue;
+  const min=Number(col.getAttribute('min')),max=Number(col.getAttribute('max'));
+  if(min>last)col.remove();
+  else if(max>last)col.setAttribute('max',String(last));
+ }
+ if(merges)for(const m of [...merges.children]){
+  const range=m.getAttribute('ref')||'',colsInRange=range.match(/([A-Z]+)[0-9]+:([A-Z]+)[0-9]+/);
+  if(colsInRange&&cellColumn(colsInRange[1])>last)m.remove();
+ }
+ if(merges)merges.setAttribute('count',String(merges.children.length));
+ const selection=doc.getElementsByTagName('selection')[0];
+ if(selection){selection.setAttribute('activeCell','B7');selection.setAttribute('sqref','B7')}
  const dim=doc.getElementsByTagName('dimension')[0];if(dim){const old=dim.getAttribute('ref')||'A1';const end=old.match(/([A-Z]+)([0-9]+)$/);if(end&&cellColumn(end[1])<last)dim.setAttribute('ref','A1:'+colName(last)+end[2])}
 }
 function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}const styles=xmlParse(entries.get('xl/styles.xml'));fixSummaryLayout(doc,stat,styles);entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
