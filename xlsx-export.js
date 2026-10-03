@@ -17,7 +17,18 @@ function getRow(doc,num){let sheet=doc.getElementsByTagName('sheetData')[0],row=
 function sheetPaths(entries){let wb=xmlParse(entries.get('xl/workbook.xml')),rels=xmlParse(entries.get('xl/_rels/workbook.xml.rels')),targets=new Map();for(let r of rels.getElementsByTagName('Relationship'))targets.set(r.getAttribute('Id'),r.getAttribute('Target'));let paths=new Map();for(let s of wb.getElementsByTagName('sheet')){let id=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id'),t=targets.get(id);if(!t)continue;let path=t.startsWith('/')?t.slice(1):'xl/'+t.replace(/^\.\//,'');path=path.replace(/^xl\/xl\//,'xl/');paths.set(s.getAttribute('name'),path)}return paths}
 // Normalize summary columns to the actual round count; the source template may
 // have room for only five summary fields, whereas the web app writes eight.
-function fixSummaryLayout(doc,stat,styles){
+// Approximate Excel's Home > Format > AutoFit Column Width at export time.
+// XLSX bestFit alone does not reliably resize on open, so measure actual output.
+function autoFitNoteWidth(notes){
+ const canvas=document.createElement('canvas');
+ const ctx=canvas.getContext('2d');
+ if(ctx)ctx.font='11pt "Yu Gothic", "Meiryo", sans-serif';
+ const measure=text=>ctx?ctx.measureText(text).width:[...text].reduce((n,ch)=>n+(/[^\x00-\x7F]/.test(ch)?14:7),0);
+ const maxPx=Math.max(measure('備考'),...notes.map(note=>measure(String(note??''))));
+ // Excel column width uses approximately 7 pixels per unit at default font.
+ return Math.ceil((maxPx+12)/7*100)/100;
+}
+function fixSummaryLayout(doc,stat,styles,noteWidth){
  const ns=doc.documentElement.namespaceURI,last=stat+7;
  const titles=['順位','勝数','負数','直接対決','SC','SB','MD','備考'];
  const existing=(row,n)=>[...row.children].find(c=>c.localName==='c'&&c.getAttribute('r')===colName(n)+row.getAttribute('r'));
@@ -57,14 +68,14 @@ function fixSummaryLayout(doc,stat,styles){
    if(b<stat)continue;
    if(a<stat)c.setAttribute('max',String(stat-1));else c.remove();
   }
-  [5.4,5.4,5.4,6.5,5.4,5.4,5.4,29].forEach((w,i)=>{let c=doc.createElementNS(ns,'col');c.setAttribute('min',String(stat+i));c.setAttribute('max',String(stat+i));c.setAttribute('width',String(w));c.setAttribute('customWidth','1');cols.append(c)});
+  [5.4,5.4,5.4,6.5,5.4,5.4,5.4,noteWidth].forEach((w,i)=>{let c=doc.createElementNS(ns,'col');c.setAttribute('min',String(stat+i));c.setAttribute('max',String(stat+i));c.setAttribute('width',String(w));c.setAttribute('customWidth','1');cols.append(c)});
  }
  // Never leave old summary values, formatting or merged ranges to the right.
  for(let row of doc.getElementsByTagName('row'))for(let c of [...row.children])if(c.localName==='c'&&cellColumn(c.getAttribute('r'))>last)c.remove();
  if(merges){for(let m of [...merges.children]){let ref=m.getAttribute('ref')||'',a=ref.match(/^([A-Z]+)\d+/);if(a&&cellColumn(a[1])>last)m.remove()}merges.setAttribute('count',String(merges.children.length))}
  let dim=doc.getElementsByTagName('dimension')[0];if(dim)dim.setAttribute('ref','A1:'+colName(last)+'56');
 }
-function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}const styles=xmlParse(entries.get('xl/styles.xml'));fixSummaryLayout(doc,stat,styles);entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
+function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}const styles=xmlParse(entries.get('xl/styles.xml'));const noteWidth=autoFitNoteWidth((rs||[]).map(q=>q.note));fixSummaryLayout(doc,stat,styles,noteWidth);entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
 // Keep only the selected class worksheet in a manually downloaded workbook.
 function keepSelectedWorksheet(entries,selectedName){
  const wb=xmlParse(entries.get('xl/workbook.xml'));
