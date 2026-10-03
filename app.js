@@ -188,6 +188,15 @@ $('undo').onclick=async()=>{
 };
 
 document.addEventListener('keydown',e=>{if(e.key==='F5'||e.key==='F6'){if($('workspace').hidden)return;e.preventDefault();if(e.key==='F5')autoFillCurrentRound();else showCheck();}});
+$('exportCurrentExcel').onclick=async()=>{
+ const btn=$('exportCurrentExcel');btn.disabled=true;
+ try{
+  if(!d)throw Error('クラスが選択されていません');
+  await downloadCurrentClassExcel(d,rankForClass);
+  say(d.className+'クラスのExcelダウンロードを開始しました。');
+ }catch(e){say('Excel出力失敗：'+e.message);alert('Excel出力失敗：'+e.message)}
+ finally{btn.disabled=false}
+};
 $('transfer').onclick=()=>openTransferWindow();$('historyBtn').onclick=()=>openHistoryWindow();$('help').onclick=()=>showAux('help');$('closeAux').onclick=()=>{currentAux='';$('aux').hidden=true};$('sortRank').onclick=()=>{if(sortColumn==='順位'&&sortAscending){sortColumn='NO';sortAscending=true;sortByRank=false}else{sortColumn='順位';sortAscending=true;sortByRank=true}render()};$('navprep').onclick=()=>{$('prep').hidden=false;$('workspace').hidden=true;$('navprep').className='active';$('navprogress').className=''};$('navprogress').onclick=()=>{if(!d)return say('先に大会を作成してください');$('prep').hidden=true;$('workspace').hidden=false;$('navprep').className='';$('navprogress').className='active'};
 function save(){if(d){
  tournamentClasses[activeClassIndex]=d;
