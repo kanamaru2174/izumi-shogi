@@ -1,6 +1,12 @@
 'use strict';
 const $=id=>document.getElementById(id);let d=null;let tournamentClasses=[],activeClassIndex=0,excelPreparation=null;
-const say=s=>{$('msg').textContent=s};const key=(a,b)=>[a,b].sort((x,y)=>x-y).join(':');
+const say=s=>{const m=$('msg');m.textContent=s;
+ let live=document.getElementById('progressError');
+ if(!live){live=document.createElement('div');live.id='progressError';live.setAttribute('role','alert');
+ live.style.cssText='white-space:pre-wrap;color:#9b1c1c;background:#fff1ee;padding:10px;margin:8px 0;font-weight:bold;display:none';
+ document.querySelector('#workspace .toolbar:last-of-type')?.after(live);}
+ if(live){live.textContent=s;live.style.display=/回戦は確定していません|エラー|失敗/.test(s)?'block':'none'}
+};const key=(a,b)=>[a,b].sort((x,y)=>x-y).join(':');
 function stats(){let z=Object.fromEntries(d.players.map(p=>[p.no,{wins:0,losses:0,byes:0,hist:''}]));for(let round of Object.keys(d.results).map(Number).sort((a,b)=>a-b))for(let r of d.results[round]){if(r.winner)z[r.winner].wins++;if(r.bye&&r.winner)z[r.winner].byes++;if(r.p2&&!r.forfeit){if(r.winner===r.p1)z[r.p2].losses++;else if(r.winner===r.p2)z[r.p1].losses++;z[r.p1].hist+=r.winner===r.p1?'○':'×';z[r.p2].hist+=r.winner===r.p2?'○':'×'}}return z}
 function rank(){
  const st=stats(), all=Object.keys(d.results).map(Number).sort((a,b)=>a-b).flatMap(r=>d.results[r]);
@@ -195,7 +201,7 @@ $('complete').onclick=async()=>{let beforeCommit;try{let errors=checkCurrentRoun
  await yukFolder.queueState({classes:tournamentClasses,active:activeClassIndex});
  const blob=await exportTournamentExcel(tournamentClasses,rankForClass);
  await yukFolder.write('対戦表_大会用_'+historyStamp()+'.xlsx',blob);
- render();say(`${round}回戦を確定し、大会用Excelと日時付き履歴Excelを保存しました`)}catch(e){if(typeof beforeCommit!=='undefined'){d=JSON.parse(beforeCommit);tournamentClasses[activeClassIndex]=d;render();try{await yukFolder.queueState({classes:tournamentClasses,active:activeClassIndex})}catch(_){/* report original save error */}}say('回戦は確定していません：'+e.message)}};
+ render();say(`${round}回戦を確定し、大会用Excelと日時付き履歴Excelを保存しました`)}catch(e){if(typeof beforeCommit!=='undefined'){d=JSON.parse(beforeCommit);tournamentClasses[activeClassIndex]=d;render();try{await yukFolder.queueState({classes:tournamentClasses,active:activeClassIndex})}catch(_){/* report original save error */}}say('回戦は確定していません：'+e.message);alert('回戦は確定していません。入力は保持しました。\n原因：'+e.message)}};
 function downloadBackup(){if(!d)return say('大会がありません');const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download='yukuhashi-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);say('JSONの保存を開始しました。ダウンロードフォルダーにファイルがあることを確認してください。');}
 
 
