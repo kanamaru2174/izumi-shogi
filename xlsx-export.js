@@ -138,17 +138,17 @@ function cleanClassWorkbook(cls,rankCallback){
   return `<c r="${col(c)}${r}" s="${style}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`;
  };
  row(1,[]);
- row(2,[cell(2,2,'クラス名',2),cell(2,3,'対戦数',2)]);
- row(3,[cell(3,2,cls.className,1),cell(3,3,cls.rounds,1)]);
+ row(2,[cell(2,2,'クラス名',2),cell(2,4,'対戦数',2)]);
+ row(3,[cell(3,2,cls.className,1),cell(3,4,cls.rounds,1)]);
  row(4,[]);
  const h=[cell(5,2,'NO',2),cell(5,3,'名前',2),cell(5,4,'棄権有無',2)];
  for(let n=1;n<=cls.rounds;n++){h.push(cell(5,5+(n-1)*2,n+'回戦',2),cell(5,6+(n-1)*2,'',2))}
  ['順位','勝数','負数','直接対決','SC','SB','MD','備考'].forEach((v,i)=>h.push(cell(5,stat+i,v,i===7?2:5)));
- row(5,h,' ht="29" customHeight="1"');
+ row(5,h,' ht="26" customHeight="1"');
  const sub=[cell(6,2,'',2),cell(6,3,'',2),cell(6,4,'',2)];
- for(let n=1;n<=cls.rounds;n++)sub.push(cell(6,5+(n-1)*2,'相手番号',2),cell(6,6+(n-1)*2,'勝敗',2));
+ for(let n=1;n<=cls.rounds;n++)sub.push(cell(6,5+(n-1)*2,'相手番号',5),cell(6,6+(n-1)*2,'勝敗',5));
  for(let i=0;i<8;i++)sub.push(cell(6,stat+i,'',2));
- row(6,sub,' ht="86" customHeight="1"');
+ row(6,sub,' ht="88" customHeight="1"');
  const ranked=Object.values(cls.results||{}).some(v=>v.length)?rankCallback(cls):[];
  const byNo=new Map((ranked||[]).map(v=>[v.no,v]));
  for(let i=0;i<cls.players.length;i++){
@@ -164,11 +164,11 @@ function cleanClassWorkbook(cls,rankCallback){
   values.forEach((v,j)=>cells.push(cell(r,stat+j,v,j===7?3:1)));
   row(r,cells);
  }
- const widths=[{n:1,w:3},{n:2,w:7},{n:3,w:21},{n:4,w:7}];
- for(let i=5;i<stat;i++)widths.push({n:i,w:i%2===1?10:8});
- [6,6,6,6,6,6,6,27].forEach((w,i)=>widths.push({n:stat+i,w}));
+ const widths=[{n:1,w:1.75},{n:2,w:5.25},{n:3,w:15},{n:4,w:4.875}];
+ for(let i=5;i<stat;i++)widths.push({n:i,w:i%2===1?5.625:6.875});
+ [4.625,4.625,4.625,4.625,4.625,4.625,4.625,20.375].forEach((w,i)=>widths.push({n:stat+i,w}));
  const cols=widths.map(({n,w})=>`<col min="${n}" max="${n}" width="${w}" customWidth="1"/>`).join('');
- const merges=['B5:B6','C5:C6','D5:D6'];
+ const merges=['B2:C2','D2:G2','B3:C3','D3:G3','B5:B6','C5:C6','D5:D6'];
  for(let n=1;n<=cls.rounds;n++){let a=5+(n-1)*2;merges.push(`${col(a)}5:${col(a+1)}5`)}
  for(let i=0;i<8;i++)merges.push(`${col(stat+i)}5:${col(stat+i)}6`);
  const mergeXml=merges.map(ref=>`<mergeCell ref="${ref}"/>`).join('');
