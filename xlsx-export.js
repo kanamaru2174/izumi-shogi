@@ -15,6 +15,39 @@ function putCell(doc,row,num,value){let ns=doc.documentElement.namespaceURI,ref=
 function cellColumn(ref){let n=0;for(let c of (ref||'').match(/^[A-Z]+/)?.[0]||'')n=n*26+c.charCodeAt(0)-64;return n}
 function getRow(doc,num){let sheet=doc.getElementsByTagName('sheetData')[0],row=[...sheet.children].find(x=>x.localName==='row'&&Number(x.getAttribute('r'))===num);if(!row){row=doc.createElementNS(doc.documentElement.namespaceURI,'row');row.setAttribute('r',String(num));let after=[...sheet.children].find(x=>x.localName==='row'&&Number(x.getAttribute('r'))>num);sheet.insertBefore(row,after||null)}return row}
 function sheetPaths(entries){let wb=xmlParse(entries.get('xl/workbook.xml')),rels=xmlParse(entries.get('xl/_rels/workbook.xml.rels')),targets=new Map();for(let r of rels.getElementsByTagName('Relationship'))targets.set(r.getAttribute('Id'),r.getAttribute('Target'));let paths=new Map();for(let s of wb.getElementsByTagName('sheet')){let id=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id'),t=targets.get(id);if(!t)continue;let path=t.startsWith('/')?t.slice(1):'xl/'+t.replace(/^\.\//,'');path=path.replace(/^xl\/xl\//,'xl/');paths.set(s.getAttribute('name'),path)}return paths}
-function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}let heading=getRow(doc,5);putCell(doc,heading,stat+3,'直接対決');entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
+function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}let heading=getRow(doc,5);
+ const titles=['順位','勝数','負数','直接対決','SC','SB','MD','備考'];
+ for(let i=0;i<8;i++)putCell(doc,heading,stat+i,titles[i]);
+ // The source template may contain an obsolete six-column ranking area.
+ // Its old merges must not overlap the current eight-column ranking area.
+ const merges=doc.getElementsByTagName('mergeCells')[0];
+ if(merges)for(const m of [...merges.children]){
+   const match=(m.getAttribute('ref')||'').match(/^([A-Z]+)5:([A-Z]+)6$/);
+   if(match){let start=cellColumn(match[1]+'5');if(start>=stat&&start<stat+8)m.remove()}
+ }
+ // Add the two missing formatted ranking columns in older templates.
+ for(let rn=5;rn<=56;rn++){
+   let row=getRow(doc,rn);
+   for(let i=0;i<8;i++){
+     let ref=colName(stat+i)+rn;
+     let c=[...row.children].find(x=>x.localName==='c'&&x.getAttribute('r')===ref);
+     if(!c){c=doc.createElementNS(doc.documentElement.namespaceURI,'c');c.setAttribute('r',ref);row.append(c)}
+     if(!c.hasAttribute('s'))c.setAttribute('s',rn===5?'54':i===7?'19':'3');
+   }
+ }
+ // Expand the notes column in the worksheet column-width definitions.
+ const cols=doc.getElementsByTagName('cols')[0];
+ if(cols){const target=stat+7;let found=false;
+   for(const col of [...cols.children]){
+     let a=+col.getAttribute('min'),b=+col.getAttribute('max');
+     if(a<=target&&target<=b){
+       if(a<target){let before=col.cloneNode(true);before.setAttribute('max',String(target-1));cols.insertBefore(before,col)}
+       if(target<b){let after=col.cloneNode(true);after.setAttribute('min',String(target+1));cols.insertBefore(after,col.nextSibling)}
+       col.setAttribute('min',String(target));col.setAttribute('max',String(target));col.setAttribute('width','65');col.setAttribute('customWidth','1');found=true;break;
+     }
+   }
+   if(!found){let col=doc.createElementNS(doc.documentElement.namespaceURI,'col');col.setAttribute('min',String(target));col.setAttribute('max',String(target));col.setAttribute('width','65');col.setAttribute('customWidth','1');cols.append(col)}
+ }
+ entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
 async function buildTournamentExcel(classes,rankCallback){let entries=await unzipEntries(getExcelTemplate()),paths=sheetPaths(entries);for(let cls of classes)sheetUpdate(entries,paths,cls,true,rankCallback);return zipStored(entries)}
 async function exportTournamentExcel(classes,rankCallback){let blob=await buildTournamentExcel(classes,rankCallback);if(window.yukFolder?.handle){await window.yukFolder.write('対戦表_大会用.xlsx',blob);return blob}let url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='対戦表_大会用.xlsx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);return blob}
