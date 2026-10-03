@@ -17,28 +17,46 @@ function getRow(doc,num){let sheet=doc.getElementsByTagName('sheetData')[0],row=
 function sheetPaths(entries){let wb=xmlParse(entries.get('xl/workbook.xml')),rels=xmlParse(entries.get('xl/_rels/workbook.xml.rels')),targets=new Map();for(let r of rels.getElementsByTagName('Relationship'))targets.set(r.getAttribute('Id'),r.getAttribute('Target'));let paths=new Map();for(let s of wb.getElementsByTagName('sheet')){let id=s.getAttribute('r:id')||s.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id'),t=targets.get(id);if(!t)continue;let path=t.startsWith('/')?t.slice(1):'xl/'+t.replace(/^\.\//,'');path=path.replace(/^xl\/xl\//,'xl/');paths.set(s.getAttribute('name'),path)}return paths}
 // Normalize summary columns to the actual round count; the source template may
 // have room for only five summary fields, whereas the web app writes eight.
-function fixSummaryLayout(doc,stat){
+function fixSummaryLayout(doc,stat,styles){
  const ns=doc.documentElement.namespaceURI,head=getRow(doc,5),last=stat+7;
  const titles=['順位','勝数','負数','直接対決','SC','SB','MD','備考'];
  const row6=getRow(doc,6),data=getRow(doc,7);
  // Capture template styles before changing the cells. The template's final
  // summary column has a right border; intermediate columns must not inherit it.
+ const sample=(r,n)=>[...r.children].find(c=>c.localName==='c'&&c.getAttribute('r')===colName(n)+r.getAttribute('r'));
  const styleAt=(row,n)=>sample(row,n)?.getAttribute('s');
  const midHead=styleAt(head,stat+1)||styleAt(head,stat),endHead=styleAt(head,stat+5)||midHead;
  const midSub=styleAt(row6,stat+1)||styleAt(row6,stat),endSub=styleAt(row6,stat+5)||midSub;
  const midBody=styleAt(data,stat)||'3',endBody=styleAt(data,stat+5)||midBody;
- const sample=(r,n)=>[...r.children].find(c=>c.localName==='c'&&c.getAttribute('r')===colName(n)+r.getAttribute('r'));
+ // Create dedicated, uniformly bordered styles rather than reusing the
+ // template's last-column styles (which have internal right-edge borders).
+ const borderList=styles.getElementsByTagName('borders')[0];
+ const b=styles.createElementNS(styles.documentElement.namespaceURI,'border');
+ for(const side of ['left','right','top','bottom']){
+  const el=styles.createElementNS(styles.documentElement.namespaceURI,side);
+  el.setAttribute('style','thin');
+  const color=styles.createElementNS(styles.documentElement.namespaceURI,'color');color.setAttribute('indexed','64');el.append(color);b.append(el);
+ }
+ b.append(styles.createElementNS(styles.documentElement.namespaceURI,'diagonal'));
+ const borderId=borderList.children.length;borderList.append(b);borderList.setAttribute('count',String(borderList.children.length));
+ const xfs=styles.getElementsByTagName('cellXfs')[0],borderStyle=new Map();
+ function withBorder(id){id=String(id||'0');if(borderStyle.has(id))return borderStyle.get(id);
+  const original=xfs.children[Number(id)]||xfs.children[0];const xf=original.cloneNode(true);
+  xf.setAttribute('borderId',String(borderId));xf.setAttribute('applyBorder','1');
+  const next=String(xfs.children.length);xfs.append(xf);xfs.setAttribute('count',String(xfs.children.length));borderStyle.set(id,next);return next;
+ }
+ const midHeadBorder=withBorder(midHead),endHeadBorder=withBorder(endHead),midSubBorder=withBorder(midSub),endSubBorder=withBorder(endSub),midBodyBorder=withBorder(midBody),endBodyBorder=withBorder(endBody);
  for(let i=0;i<8;i++){
   const n=stat+i, ref=colName(n);
   let c=sample(head,n);if(!c){c=doc.createElementNS(ns,'c');c.setAttribute('r',ref+'5');head.append(c)}
-  c.setAttribute('s',i===7?endHead:midHead);
+  c.setAttribute('s',i===7?endHeadBorder:midHeadBorder);
   putCell(doc,head,n,titles[i]);
-  let h=sample(row6,n);if(!h){h=doc.createElementNS(ns,'c');h.setAttribute('r',ref+'6');row6.append(h)}h.setAttribute('s',i===7?endSub:midSub);
+  let h=sample(row6,n);if(!h){h=doc.createElementNS(ns,'c');h.setAttribute('r',ref+'6');row6.append(h)}h.setAttribute('s',i===7?endSubBorder:midSubBorder);
   for(let r=7;r<=56;r++){
    const row=getRow(doc,r);let cell=sample(row,n);
    if(!cell){cell=doc.createElementNS(ns,'c');cell.setAttribute('r',ref+r);row.append(cell)}
    // Reuse the template's existing formatted cells, not its unformatted spillover.
-   cell.setAttribute('s',i===7?endBody:midBody);
+   cell.setAttribute('s',i===7?endBodyBorder:midBodyBorder);
   }
  }
  const cols=doc.getElementsByTagName('cols')[0]||doc.createElementNS(ns,'cols');
@@ -52,13 +70,13 @@ function fixSummaryLayout(doc,stat){
  }
  [7,7,7,13,9,9,9,64].forEach((w,i)=>{let c=doc.createElementNS(ns,'col');c.setAttribute('min',String(stat+i));c.setAttribute('max',String(stat+i));c.setAttribute('width',String(w));c.setAttribute('customWidth','1');cols.append(c)});
  const merges=doc.getElementsByTagName('mergeCells')[0];if(merges){
-  for(const m of [...merges.children]){const range=m.getAttribute('ref')||'',match=range.match(/^([A-Z]+)5:([A-Z]+)6$/);if(match&&cellColumn(match[1])>=stat&&cellColumn(match[1])<=last)m.remove()}
+  for(const m of [...merges.children]){const range=m.getAttribute('ref')||'',match=range.match(/^([A-Z]+)5:([A-Z]+)6$/);if(match&&cellColumn(match[1])<=last&&cellColumn(match[2])>=stat)m.remove()}
   for(let i=0;i<8;i++){let m=doc.createElementNS(ns,'mergeCell');m.setAttribute('ref',colName(stat+i)+'5:'+colName(stat+i)+'6');merges.append(m)}
   merges.setAttribute('count',String(merges.children.length));
  }
  const dim=doc.getElementsByTagName('dimension')[0];if(dim){const old=dim.getAttribute('ref')||'A1';const end=old.match(/([A-Z]+)([0-9]+)$/);if(end&&cellColumn(end[1])<last)dim.setAttribute('ref','A1:'+colName(last)+end[2])}
 }
-function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}fixSummaryLayout(doc,stat);entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
+function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}const styles=xmlParse(entries.get('xl/styles.xml'));fixSummaryLayout(doc,stat,styles);entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
 // Keep only the selected class worksheet in a manually downloaded workbook.
 function keepSelectedWorksheet(entries,selectedName){
  const wb=xmlParse(entries.get('xl/workbook.xml'));
