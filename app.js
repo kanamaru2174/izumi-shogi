@@ -219,7 +219,14 @@ async function restoreFromFile(file){if(!file)return;try{let x=JSON.parse(await 
 // 起動時は必ず大会準備。旧ブラウザ保存データを自動読込しない。
 // 大会進行は利用者が選んだ大会フォルダのファイルだけから復元する。
 $('prep').hidden=false;$('workspace').hidden=true;
-$('folderMock').onclick=async()=>{try{let data=await yukFolder.pick();if(data){data.classes.forEach(validate);if(!confirm('選択した大会フォルダの進行状況を開きますか？')){yukFolder.disconnect();return;}tournamentClasses=data.classes;activeClassIndex=Math.min(data.active||0,data.classes.length-1);d=tournamentClasses[activeClassIndex];render();$('navprogress').click();say('大会フォルダから再開しました')}else{d=null;tournamentClasses=[];activeClassIndex=0;$('prep').hidden=false;$('workspace').hidden=true;say('空の大会フォルダを選択しました。準備用Excelを選択してください。')}}catch(e){say('フォルダ選択：'+e.message)}};
+const showPrepMode=mode=>{ $('prepChoices').hidden=!!mode;$('newPrep').hidden=mode!=='new';$('resumePrep').hidden=mode!=='resume';};
+$('newTournament').onclick=()=>{showPrepMode('new');$('newExcelRow').hidden=true;$('excelNotice').hidden=true;$('excelCreate').hidden=true;$('excelCreate').disabled=true;$('excelPath').value='';$('excelMock').value='';excelPreparation=null;yukFolder.disconnect();$('folderNotice').textContent='まず空の大会フォルダを選択してください。';};
+$('resumeTournament').onclick=async()=>{showPrepMode('resume');$('resumeLast').disabled=true;try{const info=await yukFolder.getLastInfo();$('lastFolderNotice').textContent=info?'前回の大会フォルダ：'+info.name+'。再開する場合は下のボタンを押してください。':'前回の大会フォルダは記憶されていません。別のフォルダを選択してください。';$('resumeLast').disabled=!info}catch(e){$('lastFolderNotice').textContent='前回のフォルダを確認できません：'+e.message}};
+document.querySelectorAll('.backPrep').forEach(b=>b.onclick=()=>{yukFolder.disconnect();showPrepMode(null)});
+async function openSaved(data){if(!data)throw Error('このフォルダには保存済みの大会進行データがありません');data.classes.forEach(validate);tournamentClasses=data.classes;activeClassIndex=Math.min(data.active||0,data.classes.length-1);d=tournamentClasses[activeClassIndex];await yukFolder.remember();render();$('navprogress').click();say('大会フォルダから再開しました')}
+$('resumeLast').onclick=async()=>{try{const data=await yukFolder.restoreLast();if(!data)throw Error('保存済みの大会進行データがありません');if(!confirm('前回の大会「'+data.classes[0].name+'」を再開しますか？'))return;await openSaved(data)}catch(e){$('lastFolderNotice').textContent='再開できません：'+e.message+'。必要なら別の大会フォルダを選択してください。'}};
+$('resumeOther').onclick=async()=>{try{const data=await yukFolder.pick();if(!data)throw Error('保存済みの大会進行データがありません');if(!confirm('「'+data.classes[0].name+'」を再開しますか？'))return;await openSaved(data)}catch(e){$('lastFolderNotice').textContent='再開できません：'+e.message}};
+$('folderMock').onclick=async()=>{try{const data=await yukFolder.pick();if(data||await yukFolder.hasTournamentFiles()){yukFolder.disconnect();throw Error('既存の大会ファイルがあります。空のフォルダを選択してください。')}await yukFolder.remember();$('folderNotice').textContent='大会フォルダ：'+yukFolder.handle.name+'（選択済み）';$('newExcelRow').hidden=false;$('excelNotice').hidden=false;say('準備用Excelを選択してください')}catch(e){if(e.name!=='AbortError')say('フォルダ選択：'+e.message)}};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
 // Windows版準備画面のUI検証: 未実装のExcel機能を成功したように表示しない。
@@ -230,7 +237,7 @@ $('excelMock').addEventListener('change', async e=>{
   excelPreparation=await parsePreparationXlsx(f);
   excelPreparation.sourceBytes=new Uint8Array(await f.arrayBuffer());
   $('excelNotice').textContent='✓ チェックOK　大会名：'+excelPreparation.name+'　'+excelPreparation.classes.length+'クラス・参加者合計 '+excelPreparation.classes.reduce((n,c)=>n+c.players.length,0)+'名。第1回戦を作成できます。';
-  $('excelCreate').disabled=false;
+  $('excelCreate').disabled=false;$('excelCreate').hidden=false;
  }catch(err){$('excelNotice').textContent='準備用Excelに問題があります：'+err.message}
 });
 $('excelCreate').onclick=async()=>{
