@@ -231,14 +231,18 @@ function confirmReplaceTournament(){
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.48);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px';
   const panel=document.createElement('div');
   panel.style.cssText='background:white;color:#202b3b;border-radius:12px;padding:22px;max-width:460px;width:100%;font-size:18px';
-  const msg=document.createElement('p');msg.textContent='以前の大会をバックアップしますか？ 「いいえ」：保存せず新しい大会を作成。「はい」：バックアップしてから作成。';
-  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:16px;margin-top:22px';
-  for(const [label,answer] of [['いいえ',false],['はい',true]]){
-   const button=document.createElement('button');button.type='button';button.textContent=label;
-   button.style.cssText='min-width:100px;padding:12px;font-size:18px';
-   button.onclick=()=>{overlay.remove();resolve(answer)};actions.append(button);
+  panel.style.cssText='box-sizing:border-box;background:#fff;color:#172b46;border-radius:16px;padding:24px;max-width:520px;width:100%;font-size:20px;line-height:1.6;box-shadow:0 8px 28px #0004';
+  const title=document.createElement('h3');title.textContent='以前の大会データがあります';title.style.cssText='font-size:24px;margin:0 0 18px;line-height:1.4';
+  const msg=document.createElement('p');msg.textContent='新しい大会を作成します。以前の大会をバックアップしますか？';msg.style.cssText='margin:0 0 20px;line-height:1.55';
+  const actions=document.createElement('div');actions.style.cssText='display:flex;flex-direction:column;gap:14px';
+  for(const [label,detail,answer] of [['いいえ','保存せずに新しい大会を作成',false],['はい','バックアップしてから作成',true]]){
+   const button=document.createElement('button');button.type='button';
+   button.style.cssText='display:flex;align-items:center;gap:14px;width:100%;min-height:76px;padding:12px 16px;text-align:left;background:'+ (answer?'#e7f1ff':'#f6f7f9')+';border:2px solid '+(answer?'#3979bd':'#8795a6')+';border-radius:10px;color:#162b44;font-size:21px';
+   const name=document.createElement('strong');name.textContent=label;name.style.cssText='font-size:23px;min-width:68px';
+   const desc=document.createElement('span');desc.textContent=detail;desc.style.cssText='font-size:17px;line-height:1.35';
+   button.append(name,desc);button.onclick=()=>{overlay.remove();resolve(answer)};actions.append(button);
   }
-  panel.append(msg,actions);overlay.append(panel);document.body.append(overlay);
+  panel.append(title,msg,actions);overlay.append(panel);document.body.append(overlay);
  });
 }
 $('excelCreate').onclick=async()=>{
