@@ -219,10 +219,29 @@ $('excelMock').addEventListener('change', async e=>{
   $('excelCreate').disabled=false;
  }catch(err){$('excelNotice').textContent='準備用Excelに問題があります：'+err.message}
 });
+function confirmReplaceTournament(){
+ return new Promise(resolve=>{
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.48);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px';
+  const panel=document.createElement('div');
+  panel.style.cssText='background:white;color:#202b3b;border-radius:12px;padding:22px;max-width:460px;width:100%;font-size:18px';
+  const msg=document.createElement('p');msg.textContent='以前の大会をバックアップしますか？ 「いいえ」：保存せず新しい大会を作成。「はい」：バックアップしてから作成。';
+  const actions=document.createElement('div');actions.style.cssText='display:flex;justify-content:flex-end;gap:16px;margin-top:22px';
+  for(const [label,answer] of [['いいえ',false],['はい',true]]){
+   const button=document.createElement('button');button.type='button';button.textContent=label;
+   button.style.cssText='min-width:100px;padding:12px;font-size:18px';
+   button.onclick=()=>{overlay.remove();resolve(answer)};actions.append(button);
+  }
+  panel.append(msg,actions);overlay.append(panel);document.body.append(overlay);
+ });
+}
 $('excelCreate').onclick=async()=>{
  if(!excelPreparation)return;
  if(!window.yukFolder?.handle)return say('先に大会フォルダを選択してください。');
- if(await yukFolder.hasTournamentFiles()&&!confirm('端末内に以前の大会があります。バックアップを保存してから、新しい大会で置き換えますか？'))return;
+ if(await yukFolder.hasTournamentFiles()){
+  const backupRequested=await confirmReplaceTournament();
+  if(backupRequested){try{await yukFolder.flush();await yukFolder.backupTournamentFiles()}catch(err){return say('バックアップに失敗しました。新しい大会は作成していません：'+err.message)}}
+ }
  tournamentClasses=excelPreparation.classes.map(c=>{
   // V127: 初回に名簿そのものをシャッフルし、その順番で大会NOを確定する。
   const shuffled=[...c.players];
