@@ -9,6 +9,16 @@ window.yukFolder=(()=>{
  async function read(name){const blob=await get(name);return blob?new File([blob],name,{type:blob.type}):null}
  async function write(name,blob){await put(name,blob)}
  async function load(){const file=await read('大会進行データ.json');if(!file)return null;const data=JSON.parse(await file.text());if(!Array.isArray(data.classes)||!data.classes.length)throw Error('保存大会データが不正です');const excel=await read('対戦表_準備用.xlsx');if(excel)setExcelTemplate(new Uint8Array(await excel.arrayBuffer()));return data}
+ async function backupTournamentFiles(){
+  await pending;
+  const stamp=new Date().toISOString().replace(/[-:TZ.]/g,'').slice(0,14);
+  let saved=0;
+  for(const name of ['大会進行データ.json','対戦表_大会用.xlsx','対戦表_準備用.xlsx']){
+   const blob=await get(name);
+   if(blob){const dot=name.lastIndexOf('.');await put(name.slice(0,dot)+'_backup_'+stamp+name.slice(dot),blob);saved++}
+  }
+  if(!saved)throw Error('バックアップ対象がありません');
+ }
  function queueState(data){pending=pending.catch(()=>{}).then(()=>put('大会進行データ.json',new Blob([JSON.stringify(data)],{type:'application/json'})));return pending}
- return {handle:{name:'iPad端末内'},pick:load,read,write,remove,load,queueState,flush:()=>pending,hasTournamentFiles:async()=>!!(await get('大会進行データ.json')),disconnect:()=>{}};
+ return {handle:{name:'iPad端末内'},pick:load,read,write,remove,load,backupTournamentFiles,queueState,flush:()=>pending,hasTournamentFiles:async()=>!!(await get('大会進行データ.json')),disconnect:()=>{}};
 })();
