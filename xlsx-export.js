@@ -18,82 +18,51 @@ function sheetPaths(entries){let wb=xmlParse(entries.get('xl/workbook.xml')),rel
 // Normalize summary columns to the actual round count; the source template may
 // have room for only five summary fields, whereas the web app writes eight.
 function fixSummaryLayout(doc,stat,styles){
- const ns=doc.documentElement.namespaceURI,head=getRow(doc,5),last=stat+7;
+ const ns=doc.documentElement.namespaceURI,last=stat+7;
  const titles=['順位','勝数','負数','直接対決','SC','SB','MD','備考'];
- const row6=getRow(doc,6),data=getRow(doc,7);
- // Capture template styles before changing the cells. The template's final
- // summary column has a right border; intermediate columns must not inherit it.
- const sample=(r,n)=>[...r.children].find(c=>c.localName==='c'&&c.getAttribute('r')===colName(n)+r.getAttribute('r'));
- const styleAt=(row,n)=>sample(row,n)?.getAttribute('s');
- const midHead=styleAt(head,stat+1)||styleAt(head,stat),endHead=styleAt(head,stat+5)||midHead;
- const midSub=styleAt(row6,stat+1)||styleAt(row6,stat),endSub=styleAt(row6,stat+5)||midSub;
- const midBody=styleAt(data,stat)||'3',endBody=styleAt(data,stat+5)||midBody;
- // Create dedicated, uniformly bordered styles rather than reusing the
- // template's last-column styles (which have internal right-edge borders).
- const borderList=styles.getElementsByTagName('borders')[0];
- const b=styles.createElementNS(styles.documentElement.namespaceURI,'border');
- for(const side of ['left','right','top','bottom']){
-  const el=styles.createElementNS(styles.documentElement.namespaceURI,side);
-  el.setAttribute('style','thin');
-  const color=styles.createElementNS(styles.documentElement.namespaceURI,'color');color.setAttribute('indexed','64');el.append(color);b.append(el);
+ const existing=(row,n)=>[...row.children].find(c=>c.localName==='c'&&c.getAttribute('r')===colName(n)+row.getAttribute('r'));
+ const ensure=(row,n)=>{let c=existing(row,n);if(!c){c=doc.createElementNS(ns,'c');c.setAttribute('r',colName(n)+row.getAttribute('r'));let after=[...row.children].find(x=>x.localName==='c'&&cellColumn(x.getAttribute('r'))>n);row.insertBefore(c,after||null)}return c};
+ // Read actual reference styles BEFORE moving anything. Original workbook uses
+ // thin internal lines, medium outside borders, and medium every fifth row.
+ const h=getRow(doc,5),sub=getRow(doc,6),refStat=stat,refEnd=stat+5;
+ const hMid=existing(h,refStat+1)?.getAttribute('s')||existing(h,refStat)?.getAttribute('s');
+ const hFirst=existing(h,refStat)?.getAttribute('s')||hMid;
+ const hEnd=existing(h,refEnd)?.getAttribute('s')||hMid;
+ const subMid=existing(sub,refStat+1)?.getAttribute('s')||existing(sub,refStat)?.getAttribute('s');
+ const subEnd=existing(sub,refEnd)?.getAttribute('s')||subMid;
+ const samples=[];
+ for(let r=7;r<=56;r++){
+  let row=getRow(doc,r),mid=existing(row,refStat)?.getAttribute('s'),end=existing(row,refEnd)?.getAttribute('s');
+  samples.push({row,mid:mid||'3',end:end||mid||'3'});
  }
- b.append(styles.createElementNS(styles.documentElement.namespaceURI,'diagonal'));
- const borderId=borderList.children.length;borderList.append(b);borderList.setAttribute('count',String(borderList.children.length));
- const xfs=styles.getElementsByTagName('cellXfs')[0],borderStyle=new Map();
- function withBorder(id){id=String(id||'0');if(borderStyle.has(id))return borderStyle.get(id);
-  const original=xfs.children[Number(id)]||xfs.children[0];const xf=original.cloneNode(true);
-  xf.setAttribute('borderId',String(borderId));xf.setAttribute('applyBorder','1');
-  const next=String(xfs.children.length);xfs.append(xf);xfs.setAttribute('count',String(xfs.children.length));borderStyle.set(id,next);return next;
- }
- const midHeadBorder=withBorder(midHead),endHeadBorder=withBorder(endHead),midSubBorder=withBorder(midSub),endSubBorder=withBorder(endSub),midBodyBorder=withBorder(midBody),endBodyBorder=withBorder(endBody);
  for(let i=0;i<8;i++){
-  const n=stat+i, ref=colName(n);
-  let c=sample(head,n);if(!c){c=doc.createElementNS(ns,'c');c.setAttribute('r',ref+'5');head.append(c)}
-  c.setAttribute('s',i===7?endHeadBorder:midHeadBorder);
-  putCell(doc,head,n,titles[i]);
-  let h=sample(row6,n);if(!h){h=doc.createElementNS(ns,'c');h.setAttribute('r',ref+'6');row6.append(h)}h.setAttribute('s',i===7?endSubBorder:midSubBorder);
-  for(let r=7;r<=56;r++){
-   const row=getRow(doc,r);let cell=sample(row,n);
-   if(!cell){cell=doc.createElementNS(ns,'c');cell.setAttribute('r',ref+r);row.append(cell)}
-   // Reuse the template's existing formatted cells, not its unformatted spillover.
-   cell.setAttribute('s',i===7?endBodyBorder:midBodyBorder);
+  let c=ensure(h,stat+i);c.setAttribute('s',i===7?hEnd:i===0?hFirst:hMid);putCell(doc,h,stat+i,titles[i]);
+  let h2=ensure(sub,stat+i);h2.setAttribute('s',i===7?subEnd:subMid);putCell(doc,sub,stat+i,null);
+ }
+ for(const {row,mid,end} of samples)for(let i=0;i<8;i++)ensure(row,stat+i).setAttribute('s',i===7?end:mid);
+ const merges=doc.getElementsByTagName('mergeCells')[0];
+ if(merges){
+  for(let m of [...merges.children]){
+   let ref=m.getAttribute('ref')||'',match=ref.match(/^([A-Z]+)5:([A-Z]+)6$/);
+   if(match&&cellColumn(match[1])>=stat)m.remove();
   }
- }
- const cols=doc.getElementsByTagName('cols')[0]||doc.createElementNS(ns,'cols');
- if(!cols.parentNode){let sheet=doc.getElementsByTagName('sheetData')[0];doc.documentElement.insertBefore(cols,sheet)}
- // Existing template often defines one combined range over the summary cells.
- // Remove overlapping definitions so individual widths reliably take effect.
- for(const c of [...cols.children])if(c.localName==='col'&&Number(c.getAttribute('max'))>=stat&&Number(c.getAttribute('min'))<=last){
-  let a=Number(c.getAttribute('min')),b=Number(c.getAttribute('max'));
-  if(a<stat){let left=c.cloneNode(true);left.setAttribute('max',String(stat-1));cols.insertBefore(left,c)}
-  if(b>last){let right=c.cloneNode(true);right.setAttribute('min',String(last+1));cols.insertBefore(right,c)}c.remove();
- }
- [7,7,7,13,9,9,9,64].forEach((w,i)=>{let c=doc.createElementNS(ns,'col');c.setAttribute('min',String(stat+i));c.setAttribute('max',String(stat+i));c.setAttribute('width',String(w));c.setAttribute('customWidth','1');cols.append(c)});
- const merges=doc.getElementsByTagName('mergeCells')[0];if(merges){
-  for(const m of [...merges.children]){const range=m.getAttribute('ref')||'',match=range.match(/^([A-Z]+)5:([A-Z]+)6$/);if(match&&cellColumn(match[1])<=last&&cellColumn(match[2])>=stat)m.remove()}
   for(let i=0;i<8;i++){let m=doc.createElementNS(ns,'mergeCell');m.setAttribute('ref',colName(stat+i)+'5:'+colName(stat+i)+'6');merges.append(m)}
   merges.setAttribute('count',String(merges.children.length));
  }
- // The supplied template retains formatted phantom cells after the final
- // summary column. Remove them; otherwise Excel displays stray vertical rules.
- for(const row of doc.getElementsByTagName('row')){
-  for(const cell of [...row.children])
-   if(cell.localName==='c'&&cellColumn(cell.getAttribute('r'))>last)cell.remove();
+ const cols=doc.getElementsByTagName('cols')[0];
+ if(cols){
+  for(let c of [...cols.children]){
+   if(c.localName!=='col')continue;
+   let a=Number(c.getAttribute('min')),b=Number(c.getAttribute('max'));
+   if(b<stat)continue;
+   if(a<stat)c.setAttribute('max',String(stat-1));else c.remove();
+  }
+  [5.4,5.4,5.4,6.5,5.4,5.4,5.4,29].forEach((w,i)=>{let c=doc.createElementNS(ns,'col');c.setAttribute('min',String(stat+i));c.setAttribute('max',String(stat+i));c.setAttribute('width',String(w));c.setAttribute('customWidth','1');cols.append(c)});
  }
- for(const col of [...cols.children]){
-  if(col.localName!=='col')continue;
-  const min=Number(col.getAttribute('min')),max=Number(col.getAttribute('max'));
-  if(min>last)col.remove();
-  else if(max>last)col.setAttribute('max',String(last));
- }
- if(merges)for(const m of [...merges.children]){
-  const range=m.getAttribute('ref')||'',colsInRange=range.match(/([A-Z]+)[0-9]+:([A-Z]+)[0-9]+/);
-  if(colsInRange&&cellColumn(colsInRange[1])>last)m.remove();
- }
- if(merges)merges.setAttribute('count',String(merges.children.length));
- const selection=doc.getElementsByTagName('selection')[0];
- if(selection){selection.setAttribute('activeCell','B7');selection.setAttribute('sqref','B7')}
- const dim=doc.getElementsByTagName('dimension')[0];if(dim){const old=dim.getAttribute('ref')||'A1';const end=old.match(/([A-Z]+)([0-9]+)$/);if(end&&cellColumn(end[1])<last)dim.setAttribute('ref','A1:'+colName(last)+end[2])}
+ // Never leave old summary values, formatting or merged ranges to the right.
+ for(let row of doc.getElementsByTagName('row'))for(let c of [...row.children])if(c.localName==='c'&&cellColumn(c.getAttribute('r'))>last)c.remove();
+ if(merges){for(let m of [...merges.children]){let ref=m.getAttribute('ref')||'',a=ref.match(/^([A-Z]+)\d+/);if(a&&cellColumn(a[1])>last)m.remove()}merges.setAttribute('count',String(merges.children.length))}
+ let dim=doc.getElementsByTagName('dimension')[0];if(dim)dim.setAttribute('ref','A1:'+colName(last)+'56');
 }
 function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}const styles=xmlParse(entries.get('xl/styles.xml'));fixSummaryLayout(doc,stat,styles);entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
 // Keep only the selected class worksheet in a manually downloaded workbook.
@@ -132,9 +101,7 @@ function cleanClassWorkbook(cls,rankCallback){
  const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
  const col=n=>colName(n),last=5+cls.rounds*2+7,stat=last-7;
  const rows=[],row=(r,cells,extra='')=>rows.push(`<row r="${r}"${extra}>${cells.join('')}</row>`);
- const borderFor=(r,c)=>{if(r===2||r===3)return 21;if(r===5){if(c===2)return 8;if(c===last)return 12;if(c>=5&&c<stat)return (c-5)%2===0?10:11;return 9}if(r===6)return c===2?13:c===last?14:3;if(r>=7){const bottom=r===cls.players.length+6,group=(r-6)%5===0;if(bottom)return c===2?22:c===last?24:23;if(group)return c===2?19:c===last?20:4;if(r===7)return c===2?15:c===last?16:2;return c===2?17:c===last?18:1}return 0;};
  const cell=(r,c,v,style=1)=>{
-  if((r===2||r===3||r>=5)&&c>=2&&c<=last)style=6+style*28+borderFor(r,c);
   if(v===null||v===undefined||v==='')return `<c r="${col(c)}${r}" s="${style}"/>`;
   if(typeof v==='number')return `<c r="${col(c)}${r}" s="${style}"><v>${v}</v></c>`;
   return `<c r="${col(c)}${r}" s="${style}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`;
@@ -175,17 +142,47 @@ function cleanClassWorkbook(cls,rankCallback){
  for(let i=0;i<8;i++)merges.push(`${col(stat+i)}5:${col(stat+i)}6`);
  const mergeXml=merges.map(ref=>`<mergeCell ref="${ref}"/>`).join('');
  add('xl/worksheets/sheet1.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${col(last)}${Math.max(7,cls.players.length+6)}"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>${cols}</cols><sheetData>${rows.join('')}</sheetData><mergeCells count="${merges.length}">${mergeXml}</mergeCells><pageMargins left="0.25" right="0.25" top="0.5" bottom="0.5" header="0.2" footer="0.2"/></worksheet>`);
- const exactBorders=String.raw`<border><left></left><right></right><top></top><bottom></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="medium"><color theme="1"/></left><right></right><top style="medium"><color theme="1"/></top><bottom style="medium"><color theme="1"/></bottom><diagonal></diagonal></border><border><left></left><right style="medium"><color theme="1"/></right><top style="medium"><color theme="1"/></top><bottom style="medium"><color theme="1"/></bottom><diagonal></diagonal></border><border><left></left><right></right><top style="medium"><color theme="1"/></top><bottom style="medium"><color theme="1"/></bottom><diagonal></diagonal></border><border><left style="medium"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right></right><top style="medium"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left></left><right style="thin"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom></bottom><diagonal></diagonal></border><border><left style="medium"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="medium"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="medium"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="medium"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="medium"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="medium"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="medium"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border><border><left style="thin"><color auto="1"/></left><right style="medium"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal></diagonal></border>`;
- const xfs=[];for(let base=0;base<6;base++)for(let border=0;border<28;border++){const font=base===2||base===4||base===5?1:0;const align=base===3?' horizontal="left" vertical="center"':base===5?' horizontal="center" vertical="center" textRotation="255" wrapText="1"':' horizontal="center" vertical="center" wrapText="1"';xfs.push(`<xf numFmtId="0" fontId="${font}" fillId="0" borderId="${border}" xfId="0" applyBorder="1"><alignment${align}/></xf>`)}
- add('xl/styles.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Yu Gothic"/></font><font><b/><sz val="11"/><name val="Yu Gothic"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="28">${exactBorders}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="174"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0"/>${xfs.join('')}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`);
+ add('xl/styles.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Yu Gothic"/></font><font><b/><sz val="11"/><name val="Yu Gothic"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment horizontal="center" vertical="center" textRotation="255" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`);
  add('xl/workbook.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${esc(cls.className)}" sheetId="1" r:id="rId1"/></sheets></workbook>`);
  add('xl/_rels/workbook.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
  add('_rels/.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
  add('[Content_Types].xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`);
  return zipStored(entries);
 }
+// Export the currently selected class by editing the supplied ORIGINAL workbook.
+// No cell styles, widths, row heights or merged ranges are recreated.
 async function downloadCurrentClassExcel(cls,rankCallback){
- const blob=cleanClassWorkbook(cls,rankCallback),url=URL.createObjectURL(blob),a=document.createElement('a');
+ if(typeof EXACT_EXCEL_FORMAT_B64!=='string')throw Error('Excel原本が読み込まれていません');
+ const entries=await unzipEntries(fromB64(EXACT_EXCEL_FORMAT_B64));
+ const paths=sheetPaths(entries);
+ if(!paths.has(cls.className))throw Error('原本に「'+cls.className+'」シートがありません');
+ sheetUpdate(entries,paths,cls,true,rankCallback);
+ const workbook=xmlParse(entries.get('xl/workbook.xml'));
+ const sheets=workbook.getElementsByTagName('sheets')[0];
+ const keep=[...sheets.children].find(x=>x.getAttribute('name')===cls.className);
+ if(!keep)throw Error('選択クラスのシートが見つかりません');
+ const nsRel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+ const keepRel=keep.getAttributeNS(nsRel,'id')||keep.getAttribute('r:id');
+ for(const sh of [...sheets.children])if(sh!==keep)sh.remove();
+ for(const view of workbook.getElementsByTagName('workbookView'))view.setAttribute('activeTab','0');
+ // Defined names referring to other sheets would otherwise trigger Excel repair warnings.
+ for(const defs of [...workbook.getElementsByTagName('definedNames')])defs.remove();
+ const rels=xmlParse(entries.get('xl/_rels/workbook.xml.rels'));
+ const removed=[];
+ for(const rel of [...rels.documentElement.children]){
+  if(rel.localName!=='Relationship'||!rel.getAttribute('Type')?.endsWith('/worksheet'))continue;
+  if(rel.getAttribute('Id')===keepRel)continue;
+  let target=rel.getAttribute('Target');
+  let path=(target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'' )).replace(/^xl\/xl\//,'xl/');
+  removed.push('/'+path);entries.delete(path);rel.remove();
+ }
+ const ct=xmlParse(entries.get('[Content_Types].xml'));
+ for(const node of [...ct.documentElement.children])if(removed.includes(node.getAttribute('PartName')))node.remove();
+ const enc=new TextEncoder(),ser=doc=>enc.encode(new XMLSerializer().serializeToString(doc));
+ entries.set('xl/workbook.xml',ser(workbook));
+ entries.set('xl/_rels/workbook.xml.rels',ser(rels));
+ entries.set('[Content_Types].xml',ser(ct));
+ const blob=zipStored(entries),url=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=url;a.download='対戦表_'+String(cls.className).replace(/[\\/:*?"<>|]/g,'_')+'.xlsx';
  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
  return blob;
