@@ -21,18 +21,24 @@ function fixSummaryLayout(doc,stat){
  const ns=doc.documentElement.namespaceURI,head=getRow(doc,5),last=stat+7;
  const titles=['順位','勝数','負数','直接対決','SC','SB','MD','備考'];
  const row6=getRow(doc,6),data=getRow(doc,7);
+ // Capture template styles before changing the cells. The template's final
+ // summary column has a right border; intermediate columns must not inherit it.
+ const styleAt=(row,n)=>sample(row,n)?.getAttribute('s');
+ const midHead=styleAt(head,stat+1)||styleAt(head,stat),endHead=styleAt(head,stat+5)||midHead;
+ const midSub=styleAt(row6,stat+1)||styleAt(row6,stat),endSub=styleAt(row6,stat+5)||midSub;
+ const midBody=styleAt(data,stat)||'3',endBody=styleAt(data,stat+5)||midBody;
  const sample=(r,n)=>[...r.children].find(c=>c.localName==='c'&&c.getAttribute('r')===colName(n)+r.getAttribute('r'));
  for(let i=0;i<8;i++){
   const n=stat+i, ref=colName(n);
   let c=sample(head,n);if(!c){c=doc.createElementNS(ns,'c');c.setAttribute('r',ref+'5');head.append(c)}
-  if(!c.hasAttribute('s'))c.setAttribute('s',sample(head,stat)?.getAttribute('s')||'0');
+  c.setAttribute('s',i===7?endHead:midHead);
   putCell(doc,head,n,titles[i]);
-  let h=sample(row6,n);if(!h){h=doc.createElementNS(ns,'c');h.setAttribute('r',ref+'6');h.setAttribute('s',sample(row6,stat)?.getAttribute('s')||'0');row6.append(h)}
+  let h=sample(row6,n);if(!h){h=doc.createElementNS(ns,'c');h.setAttribute('r',ref+'6');row6.append(h)}h.setAttribute('s',i===7?endSub:midSub);
   for(let r=7;r<=56;r++){
    const row=getRow(doc,r);let cell=sample(row,n);
    if(!cell){cell=doc.createElementNS(ns,'c');cell.setAttribute('r',ref+r);row.append(cell)}
    // Reuse the template's existing formatted cells, not its unformatted spillover.
-   if(!cell.hasAttribute('s'))cell.setAttribute('s',sample(row,i===7?stat+5:stat)?.getAttribute('s')||'3');
+   cell.setAttribute('s',i===7?endBody:midBody);
   }
  }
  const cols=doc.getElementsByTagName('cols')[0]||doc.createElementNS(ns,'cols');
