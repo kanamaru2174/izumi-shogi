@@ -47,11 +47,33 @@ function alignedStyle(styles,base,alignment){
 }
 
 function specialPairStyle(styles,base){
- const ns=styles.documentElement.namespaceURI,cellXfs=styles.getElementsByTagName('cellXfs')[0],fonts=styles.getElementsByTagName('fonts')[0],borders=styles.getElementsByTagName('borders')[0];
- let boldFont=[...fonts.children].findIndex(f=>f.localName==='font'&&f.getElementsByTagName('b').length);
- if(boldFont<0){let f=fonts.children[0].cloneNode(true),b=styles.createElementNS(ns,'b');f.insertBefore(b,f.firstChild);fonts.append(f);fonts.setAttribute('count',String(fonts.children.length));boldFont=fonts.children.length-1}
- let border=styles.createElementNS(ns,'border');for(const side of ['left','right','top','bottom']){let e=styles.createElementNS(ns,side);e.setAttribute('style','double');border.append(e)}border.append(styles.createElementNS(ns,'diagonal'));borders.append(border);borders.setAttribute('count',String(borders.children.length));let borderId=borders.children.length-1;
- const xfs=[...cellXfs.children].filter(x=>x.localName==='xf'),xf=(xfs[Number(base)]||xfs[0]).cloneNode(true);xf.setAttribute('fontId',String(boldFont));xf.setAttribute('borderId',String(borderId));xf.setAttribute('applyFont','1');xf.setAttribute('applyBorder','1');cellXfs.append(xf);cellXfs.setAttribute('count',String(xfs.length+1));return String(xfs.length)
+ const ns=styles.documentElement.namespaceURI;
+ const cellXfs=styles.getElementsByTagName('cellXfs')[0];
+ const fonts=styles.getElementsByTagName('fonts')[0];
+ const borders=styles.getElementsByTagName('borders')[0];
+ const xfs=[...cellXfs.children].filter(x=>x.localName==='xf');
+ const src=xfs[Number(base)]||xfs[0];
+ // Preserve the original cell font (Yu Gothic, size etc.) and add only bold.
+ const srcFont=fonts.children[Number(src.getAttribute('fontId')||0)]||fonts.children[0];
+ const font=srcFont.cloneNode(true);
+ if(![...font.children].some(x=>x.localName==='b'))font.insertBefore(styles.createElementNS(ns,'b'),font.firstChild);
+ fonts.append(font);fonts.setAttribute('count',String(fonts.children.length));
+ const fontId=fonts.children.length-1;
+ // Four-sided double border.  This is deliberately independent from fills so
+ // prize-ranking background colours can coexist with the special-pair marker.
+ const border=styles.createElementNS(ns,'border');
+ for(const side of ['left','right','top','bottom']){
+  const e=styles.createElementNS(ns,side);e.setAttribute('style','double');
+  const color=styles.createElementNS(ns,'color');color.setAttribute('auto','1');e.append(color);border.append(e);
+ }
+ border.append(styles.createElementNS(ns,'diagonal'));
+ borders.append(border);borders.setAttribute('count',String(borders.children.length));
+ const borderId=borders.children.length-1;
+ const xf=src.cloneNode(true);
+ xf.setAttribute('fontId',String(fontId));xf.setAttribute('borderId',String(borderId));
+ xf.setAttribute('applyFont','1');xf.setAttribute('applyBorder','1');
+ cellXfs.append(xf);cellXfs.setAttribute('count',String(cellXfs.children.length));
+ return String(cellXfs.children.length-1);
 }
 function fixSummaryLayout(doc,stat,styles,noteWidth){
  const ns=doc.documentElement.namespaceURI,last=stat+7;
