@@ -26,7 +26,108 @@ function rank(){
  return ordered;
 }
 function played(){return new Set(Object.values(d.results).flat().filter(r=>r.p2).map(r=>key(r.p1,r.p2)))}
-function makePairings(round){let active=d.players.filter(p=>!p.withdrawn).map(p=>p.no),st=stats(),history=played();if(round===1){active.sort((a,b)=>a-b);let ans=[];for(let i=0;i+1<active.length;i+=2)ans.push({p1:active[i],p2:active[i+1]});if(active.length%2)ans.push({p1:active.at(-1),p2:0});return ans}let bye=null;if(active.length%2){bye=[...active].sort((a,b)=>st[a].byes-st[b].byes||st[a].wins-st[b].wins||b-a)[0];active=active.filter(x=>x!==bye)}let maxGap=active.length?Math.max(...Object.values(st).map(x=>x.wins))-Math.min(...Object.values(st).map(x=>x.wins)):0;for(let gap=0;gap<=Math.max(maxGap,d.rounds);gap++){let ids=[...active].sort((a,b)=>st[b].wins-st[a].wins||a-b),failed=new Set(),out=[];function feasible(list){let left=new Set(list);while(left.size){let q=[left.values().next().value],count=0;left.delete(q[0]);while(q.length){let a=q.shift();count++;let has=false;for(let b of list){if(a===b||history.has(key(a,b))||Math.abs(st[a].wins-st[b].wins)>gap)continue;has=true;if(left.delete(b))q.push(b)}if(!has)return false}if(count%2)return false}return true}function search(list){if(!list.length)return true;let state=[...list].sort((a,b)=>a-b).join(',');if(failed.has(state))return false;let a=list[0],cand=list.slice(1).filter(b=>!history.has(key(a,b))&&Math.abs(st[a].wins-st[b].wins)<=gap).sort((b,c)=>Math.abs(st[a].wins-st[b].wins)-Math.abs(st[a].wins-st[c].wins)||(st[a].hist===st[b].hist?0:1)-(st[a].hist===st[c].hist?0:1)||Math.abs(a-b)-Math.abs(a-c));for(let b of cand){out.push({p1:a,p2:b});if(search(list.filter(x=>x!==a&&x!==b)))return true;out.pop()}failed.add(state);return false}if(feasible(ids)&&search(ids)){if(bye!==null)out.push({p1:bye,p2:0});return out}}throw Error('再戦なしで組合せを作成できませんでした')}
+function makePairings(round){
+ let active=d.players.filter(p=>!p.withdrawn).map(p=>p.no),st=stats(),history=played();
+ const allActive=[...active];
+ if(!d.pairingMeta)d.pairingMeta={};
+ if(round===1){active.sort((a,b)=>a-b);let ans=[];for(let i=0;i+1<active.length;i+=2)ans.push({p1:active[i],p2:active[i+1],gap:0,special:false,specialReason:'',reason:'第1回戦'});if(active.length%2)ans.push({p1:active.at(-1),p2:0,gap:0,special:false,specialReason:'',reason:'不戦勝'});d.pairingMeta[round]={lookahead:false,maxGap:0,reason:'第1回戦は初期組合せ'};return ans}
+ let bye=null;if(active.length%2){bye=[...active].sort((a,b)=>st[a].byes-st[b].byes||st[a].wins-st[b].wins||b-a)[0];active=active.filter(x=>x!==bye)}
+ const remaining=Math.max(0,d.rounds-round),exactLookahead=active.length<=14,futureMemo=new Map();
+ function futurePossible(baseHistory,players,roundsLeft){
+  if(roundsLeft<=0||players.length<2)return true;
+  const memoKey=[...baseHistory].sort().join(',')+'|'+roundsLeft+'|'+players.join(',');if(futureMemo.has(memoKey))return futureMemo.get(memoKey);
+  // 小規模クラスは残り全回戦を再帰的に確認する。大人数は次回戦の成立を確認する。
+  const depth=exactLookahead?roundsLeft:Math.min(1,roundsLeft);let budget=exactLookahead?400000:30000,exhausted=false;
+  function rec(hist,left){
+   if(left<=0)return true;if(--budget<0){exhausted=true;return false}
+   let ids=[...players];
+   const byeChoices=ids.length%2?ids:[null];
+   for(const bbye of byeChoices){
+    let work=bbye===null?ids:ids.filter(x=>x!==bbye),pairs=[];
+    function match(list){
+     if(!list.length){let nh=new Set(hist);for(const [a,b] of pairs)nh.add(key(a,b));return rec(nh,left-1)}
+     let best=list[0],bestCand=null;
+     for(const a of list){let c=list.filter(b=>b!==a&&!hist.has(key(a,b)));if(bestCand===null||c.length<bestCand.length){best=a;bestCand=c}}
+     if(!bestCand.length)return false;
+     bestCand.sort((a,b)=>a-b);
+     for(const b of bestCand){pairs.push([best,b]);if(match(list.filter(x=>x!==best&&x!==b)))return true;pairs.pop()}
+     return false;
+    }
+    if(match(work))return true;
+   }
+   return false;
+  }
+  const ok=rec(new Set(baseHistory),depth)&&!exhausted;futureMemo.set(memoKey,ok);return ok;
+ }
+ let maxGap=active.length?Math.max(...active.map(x=>st[x].wins))-Math.min(...active.map(x=>st[x].wins)):0;
+ const pairKey=q=>key(q.p1,q.p2);
+ for(let gap=0;gap<=Math.max(maxGap,d.rounds);gap++){
+  let ids=[...active].sort((a,b)=>st[b].wins-st[a].wins||a-b),best=null,bestScore=null,baseline=null,baselineScore=null,visited=0;
+  function scoreOf(out){let gs=out.map(q=>Math.abs(st[q.p1].wins-st[q.p2].wins)).sort((a,b)=>b-a);return [Math.max(0,...gs),...gs,gs.reduce((a,b)=>a+b,0)]}
+  function better(a,b){if(!b)return true;for(let i=0;i<Math.max(a.length,b.length);i++){let x=a[i]||0,y=b[i]||0;if(x!==y)return x<y}return false}
+  function search(list,out){
+   if(++visited>60000&&active.length>14)return;
+   if(!list.length){
+    let sc=scoreOf(out);if(better(sc,baselineScore)){baseline=out.map(q=>({...q}));baselineScore=sc}
+    let nh=new Set(history);for(const q of out)nh.add(key(q.p1,q.p2));
+    if(remaining&&!futurePossible(nh,[...active],remaining))return;
+    if(better(sc,bestScore)){best=out.map(q=>({...q}));bestScore=sc}return;
+   }
+   let a=list[0],cand=list.slice(1).filter(b=>!history.has(key(a,b))&&Math.abs(st[a].wins-st[b].wins)<=gap).sort((b,c)=>Math.abs(st[a].wins-st[b].wins)-Math.abs(st[a].wins-st[c].wins)||Math.abs(a-b)-Math.abs(a-c));
+   for(const b of cand){out.push({p1:a,p2:b});search(list.filter(x=>x!==a&&x!==b),out);out.pop();if(best&&active.length>14)return}
+  }
+  search(ids,[]);
+  if(best){
+   const baselineSet=new Set((baseline||[]).map(pairKey)),chosenSet=new Set(best.map(pairKey));
+   const lookaheadAdjusted=!!baseline&&([...baselineSet].some(k=>!chosenSet.has(k))||[...chosenSet].some(k=>!baselineSet.has(k)));
+   let mg=Math.max(0,...best.map(q=>Math.abs(st[q.p1].wins-st[q.p2].wins)));
+   for(const q of best){
+    q.gap=Math.abs(st[q.p1].wins-st[q.p2].wins);
+    q.lookahead=lookaheadAdjusted&&!baselineSet.has(pairKey(q));
+    const parts=[];if(q.lookahead)parts.push('先読み');if(q.gap>=2)parts.push(q.gap+'勝差');
+    q.special=parts.length>0;q.specialReason=parts.length?parts.join('・')+'調整':'';
+    q.reason=q.specialReason||(q.gap===0?'同星優先':'近い勝数を優先');
+   }
+   if(bye!==null)best.push({p1:bye,p2:0,gap:0,special:false,specialReason:'',reason:'不戦勝'});
+   d.pairingMeta[round]={lookahead:remaining>0,lookaheadAdjusted,maxGap:mg,reason:lookaheadAdjusted?'先読みで将来行き詰まる候補を除外':'星差最小の成立可能な組合せ'};return best;
+  }
+ }
+ // 将来の完全先読み候補が見つからない場合でも大会を停止させない。
+ // 現在回で可能な実対局数を最大化し、残りを不戦勝にする。
+ // 再戦は絶対に作らない。棄権等で必要なら複数不戦勝を許容する。
+ let fallbackBest=null,fallbackScore=null;
+ function fbBetter(a,b){if(!b)return true;for(let i=0;i<Math.max(a.length,b.length);i++){const x=a[i]??0,y=b[i]??0;if(x!==y)return x<y}return false}
+ function fbSearch(left,pairs,byes){
+  if(!left.length){
+   const gaps=pairs.map(q=>Math.abs(st[q.p1].wins-st[q.p2].wins)).sort((a,b)=>b-a);
+   const byeCounts=byes.map(n=>st[n].byes).sort((a,b)=>b-a);
+   // 実対局数最大 → 不戦勝偏り最小 → 最大星差 → 星差総量
+   const sc=[-pairs.length,Math.max(0,...byeCounts),byeCounts.reduce((a,b)=>a+b,0),Math.max(0,...gaps),gaps.reduce((a,b)=>a+b,0)];
+   if(fbBetter(sc,fallbackScore)){fallbackScore=sc;fallbackBest={pairs:pairs.map(q=>({...q})),byes:[...byes]}}
+   return;
+  }
+  // 対戦可能相手が少ない選手から処理して詰みを避ける
+  let a=left[0],min=Infinity;
+  for(const x of left){const c=left.filter(y=>y!==x&&!history.has(key(x,y))).length;if(c<min){min=c;a=x}}
+  const rest=left.filter(x=>x!==a);
+  const cand=rest.filter(b=>!history.has(key(a,b))).sort((b,c)=>Math.abs(st[a].wins-st[b].wins)-Math.abs(st[a].wins-st[c].wins)||st[b].byes-st[c].byes||Math.abs(a-b)-Math.abs(a-c));
+  for(const b of cand){pairs.push({p1:a,p2:b});fbSearch(rest.filter(x=>x!==b),pairs,byes);pairs.pop()}
+  // a を不戦勝にする枝。複数不戦勝もここで自然に扱う。
+  byes.push(a);fbSearch(rest,pairs,byes);byes.pop();
+ }
+ fbSearch([...allActive],[],[]);
+ if(fallbackBest){
+  const out=fallbackBest.pairs;
+  for(const q of out){q.gap=Math.abs(st[q.p1].wins-st[q.p2].wins);const parts=[];if(q.gap>=2)parts.push(q.gap+'勝差');q.special=parts.length>0;q.specialReason=parts.length?parts.join('・')+'調整':'';q.reason=q.specialReason||(q.gap===0?'同星優先':'近い勝数を優先')}
+  for(const n of fallbackBest.byes)out.push({p1:n,p2:0,gap:0,special:false,specialReason:'',reason:fallbackBest.byes.length>1?'複数不戦勝調整':'不戦勝'});
+  const mg=Math.max(0,...fallbackBest.pairs.map(q=>q.gap));
+  d.pairingMeta[round]={lookahead:true,lookaheadAdjusted:true,maxGap:mg,reason:fallbackBest.byes.length>1?'再戦を避け大会を継続するため複数不戦勝を適用':'再戦を避け大会を継続できる最大実対局数を採用'};
+  return out;
+ }
+ // active が0人でも停止させない。
+ d.pairingMeta[round]={lookahead:true,lookaheadAdjusted:false,maxGap:0,reason:'対局可能な参加者なし'};
+ return [];
+}
 function el(tag,text){let e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e}function button(text,fn){let b=el('button',text);b.onclick=fn;return b}let sortByRank=false;let sortColumn='NO';let sortAscending=true;let currentAux='';
 function opponent(no,round){let p=d.pairings[round]?.find(x=>x.p1===no||x.p2===no);return p?(p.p1===no?p.p2:p.p1):null}
 function resultFor(no,round){let p=d.results[round]?.find(x=>x.p1===no||x.p2===no);return p?(p.winner===no?'〇':'×'):''}
@@ -44,9 +145,9 @@ $('workspace').hidden=false;$('eventtitle').textContent=d.name;$('viewclass').va
 let st=stats(),ranks=d.results&&Object.keys(d.results).length?rank():[],byNo=Object.fromEntries(ranks.map(x=>[x.no,x]));let ordered=[...d.players].sort((a,b)=>{
  const val=p=>{const x=byNo[p.no]||{};if(sortColumn==='NO')return p.no;if(sortColumn==='名前')return p.name;if(sortColumn==='棄権 フラグ')return Number(!!p.withdrawn);if(sortColumn==='順位')return x.rank??999;if(sortColumn==='勝数')return x.wins??0;if(sortColumn==='負数')return x.losses??0;if(sortColumn==='直接対決')return x.direct??0;if(['SC','SB','MD'].includes(sortColumn))return x[sortColumn.toLowerCase()]??0;if(sortColumn==='備考')return x.note??'';const m=sortColumn.match(/^第(\d+)回戦 (相手番号|勝敗)$/);if(m){const r=Number(m[1]);return m[2]==='相手番号'?(opponent(p.no,r)||0):(resultFor(p.no,r)||'')}return p.no};
  const av=val(a),bv=val(b);const cmp=typeof av==='string'?String(av).localeCompare(String(bv),'ja'):av-bv;return (sortAscending?cmp:-cmp)||a.no-b.no;
-});let t=el('table'),head=el('tr');for(let h of ['NO','名前','棄権 フラグ',...Array.from({length:d.currentRound||0},(_,i)=>['第'+(i+1)+'回戦 相手番号','第'+(i+1)+'回戦 勝敗']).flat(),'順位','勝数','負数','直接対決','SC','SB','MD','備考']){let th=el('th',h.replace(' 相手番号','\n相手\n番号').replace(' 勝敗','\n勝敗'));if(h==='NO')th.className='no';if(h==='名前')th.className='name';if(h==='棄権 フラグ')th.className='withdraw-cell';if(h.endsWith(' 相手番号'))th.className='opponent-cell';if(h.endsWith(' 勝敗'))th.className='result-cell';if(['順位','勝数','負数','SC','SB','MD'].includes(h))th.className='stat-cell';if(h==='直接対決')th.className='direct-cell';if(h==='備考')th.className='note';th.title=h+'で並べ替え';th.style.cursor='pointer';th.onclick=()=>{if(sortColumn===h)sortAscending=!sortAscending;else{sortColumn=h;sortAscending=true}sortByRank=sortColumn==='順位';render()};if(sortColumn===h)th.setAttribute('aria-sort',sortAscending?'ascending':'descending');head.append(th)}t.append(head);
+});let meta=d.pairingMeta?.[d.currentRound];if(meta&&d.currentRound>1){let info=el('div');info.className='pairing-info';let adj=meta.lookaheadAdjusted?'【先読みで組合せ調整あり】':'【先読み確認済み】';info.textContent=`${adj} 第${d.currentRound}回戦：最大勝数差 ${meta.maxGap}　${meta.reason}`;$('matches').replaceChildren(info)}else $('matches').replaceChildren();let t=el('table'),head=el('tr');for(let h of ['NO','名前','棄権 フラグ',...Array.from({length:d.currentRound||0},(_,i)=>['第'+(i+1)+'回戦 相手番号','第'+(i+1)+'回戦 勝敗']).flat(),'順位','勝数','負数','直接対決','SC','SB','MD','備考']){let th=el('th',h.replace(' 相手番号','\n相手\n番号').replace(' 勝敗','\n勝敗'));if(h==='NO')th.className='no';if(h==='名前')th.className='name';if(h==='棄権 フラグ')th.className='withdraw-cell';if(h.endsWith(' 相手番号'))th.className='opponent-cell';if(h.endsWith(' 勝敗'))th.className='result-cell';if(['順位','勝数','負数','SC','SB','MD'].includes(h))th.className='stat-cell';if(h==='直接対決')th.className='direct-cell';if(h==='備考')th.className='note';th.title=h+'で並べ替え';th.style.cursor='pointer';th.onclick=()=>{if(sortColumn===h)sortAscending=!sortAscending;else{sortColumn=h;sortAscending=true}sortByRank=sortColumn==='順位';render()};if(sortColumn===h)th.setAttribute('aria-sort',sortAscending?'ascending':'descending');head.append(th)}t.append(head);
 for(let p of ordered){let x=byNo[p.no],tr=el('tr');if(d.completed&&x?.rank<=3)tr.className='rank'+x.rank;let no=el('td',p.no);no.className='no';let name=el('td',p.name);name.className='name';if(p.withdrawn){no.classList.add('withdraw-gray');name.classList.add('withdraw-gray')}tr.append(no,name);let w=el('td');let check=el('input');check.type='checkbox';check.checked=!!p.withdrawn;check.disabled=!d.currentRound||d.completed||(p.withdrawn&&p.withdrawnRound<d.currentRound);check.onchange=()=>{if(p.withdrawn&&p.withdrawnRound<d.currentRound){check.checked=true;alert('過去の回戦で確定した棄権は解除できません。');return;}p.withdrawn=check.checked;p.withdrawnRound=check.checked?d.currentRound:0;if(check.checked){const opp=opponent(p.no,d.currentRound);if(opp)delete d.drafts[key(p.no,opp)];}showInputErrors([]);save();render()};w.className='withdraw-cell';w.append(check);tr.append(w);
-for(let round=1;round<=d.currentRound;round++){let opp=opponent(p.no,round);let opponentCell=el('td',opp||'');opponentCell.className='opponent-cell';if(p.withdrawn&&round>=(p.withdrawnRound||d.currentRound||1))opponentCell.classList.add('withdraw-gray');tr.append(opponentCell);let cell=el('td');cell.className='result-cell';if(opp&&round===d.currentRound&&!d.completed&&!p.withdrawn&&!d.players.find(x=>x.no===opp)?.withdrawn&&!d.drafts[key(p.no,opp)])cell.classList.add('pending-result');if(p.withdrawn&&round>=(p.withdrawnRound||d.currentRound||1))cell.classList.add('withdraw-gray');if(round===d.currentRound&&!d.completed&&!d.results[round]){if(opp===0){cell.textContent='〇'}else if(opp){let sel=el('select');let k=key(p.no,opp);for(let [v,label] of [['',''],['W','〇'],['L','×']]){let opt=el('option',label);opt.value=v;sel.append(opt)}let chosen=d.drafts[k]||'';sel.value=chosen?(Number(chosen)===p.no?'W':'L'):'';sel.disabled=!!p.withdrawn||!!d.players.find(x=>x.no===opp)?.withdrawn;sel.setAttribute('aria-label',`${p.no}番 ${p.name} 第${round}回戦 勝敗`);sel.dataset.player=String(p.no);sel.dataset.opp=String(opp);sel.onchange=()=>{if(sel.value)d.drafts[k]=String(sel.value==='W'?p.no:opp);else delete d.drafts[k];save();showInputErrors([]);render();const next=document.querySelector(`select[data-player=\"${p.no}\"]`);if(next)next.focus();updateInputAssist()};sel.onkeydown=e=>{if(e.key==='o'||e.key==='O'||e.key==='〇'||e.key==='○'){e.preventDefault();sel.value='W';sel.onchange()}else if(e.key==='x'||e.key==='X'||e.key==='×'){e.preventDefault();sel.value='L';sel.onchange()}else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();sel.value='';sel.onchange()}};cell.append(sel)}}else cell.textContent=resultFor(p.no,round);tr.append(cell)}for(let [i,val] of [x?.rank??'',st[p.no].wins,st[p.no].losses,x?.directText??'',x?.sc??0,x?.sb??0,x?.md??0,x?.note??''].entries()){let cell=el('td',String(val));cell.className=i===7?'note':i===3?'direct-cell':'stat-cell';tr.append(cell)}t.append(tr)}$('matches').replaceChildren(t);$('sortRank').textContent=sortByRank?'NO順':'順位順';updateInputAssist();if(currentAux)showAux(currentAux)}
+for(let round=1;round<=d.currentRound;round++){let opp=opponent(p.no,round);let pairNow=d.pairings[round]?.find(q=>q.p1===p.no||q.p2===p.no);let opponentCell=el('td',(opp||''));opponentCell.className='opponent-cell';if(pairNow?.special){opponentCell.classList.add('special-pairing');opponentCell.title=pairNow.specialReason}else if(pairNow?.reason)opponentCell.title=pairNow.reason;if(p.withdrawn&&round>=(p.withdrawnRound||d.currentRound||1))opponentCell.classList.add('withdraw-gray');tr.append(opponentCell);let cell=el('td');cell.className='result-cell';if(opp&&round===d.currentRound&&!d.completed&&!p.withdrawn&&!d.players.find(x=>x.no===opp)?.withdrawn&&!d.drafts[key(p.no,opp)])cell.classList.add('pending-result');if(p.withdrawn&&round>=(p.withdrawnRound||d.currentRound||1))cell.classList.add('withdraw-gray');if(round===d.currentRound&&!d.completed&&!d.results[round]){if(opp===0){cell.textContent='〇'}else if(opp){let sel=el('select');let k=key(p.no,opp);for(let [v,label] of [['',''],['W','〇'],['L','×']]){let opt=el('option',label);opt.value=v;sel.append(opt)}let chosen=d.drafts[k]||'';sel.value=chosen?(Number(chosen)===p.no?'W':'L'):'';sel.disabled=!!p.withdrawn||!!d.players.find(x=>x.no===opp)?.withdrawn;sel.setAttribute('aria-label',`${p.no}番 ${p.name} 第${round}回戦 勝敗`);sel.dataset.player=String(p.no);sel.dataset.opp=String(opp);sel.onchange=()=>{if(sel.value)d.drafts[k]=String(sel.value==='W'?p.no:opp);else delete d.drafts[k];save();showInputErrors([]);render();const next=document.querySelector(`select[data-player=\"${p.no}\"]`);if(next)next.focus();updateInputAssist()};sel.onkeydown=e=>{if(e.key==='o'||e.key==='O'||e.key==='〇'||e.key==='○'){e.preventDefault();sel.value='W';sel.onchange()}else if(e.key==='x'||e.key==='X'||e.key==='×'){e.preventDefault();sel.value='L';sel.onchange()}else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();sel.value='';sel.onchange()}};cell.append(sel)}}else cell.textContent=resultFor(p.no,round);tr.append(cell)}for(let [i,val] of [x?.rank??'',st[p.no].wins,st[p.no].losses,x?.directText??'',x?.sc??0,x?.sb??0,x?.md??0,x?.note??''].entries()){let cell=el('td',String(val));cell.className=i===7?'note':i===3?'direct-cell':'stat-cell';tr.append(cell)}t.append(tr)}$('matches').append(t);$('sortRank').textContent=sortByRank?'NO順':'順位順';updateInputAssist();if(currentAux)showAux(currentAux)}
 // 転記は別ウィンドウ。開くたびに選択中クラスの最新データを表示する。
 function openTransferWindow(){
  if(!d)return;
@@ -111,7 +212,8 @@ function showAux(kind){if(!d)return;currentAux=kind;let body=$('auxBody');body.r
     ]],
     ['2．対戦相手の決め方（現在のWeb版の実装）',[
       '第1回戦は準備用Excelの名簿をランダムに並べ替え、大会番号を振り直してから2人ずつ組み合わせます。奇数人数の場合は不戦勝が発生します。',
-      '第2回戦以降は再戦を避け、勝数が同じ人同士の対戦を優先します。組合せが成立しない場合は勝数差を広げて探索します。',
+      '第2回戦以降は再戦を避け、残り回戦も成立可能な候補を先読み確認します。その中で最大勝数差を最小にし、さらに大きな勝数差の対局数が少ない組合せを選びます。',
+      '対戦相手番号の「※」は、先読み調整または2勝差以上の理由付き組合せです。相手番号にマウスを合わせると理由を確認できます。',
       '奇数人数の不戦勝は、過去の不戦勝が少ない人を優先し、その後に勝数などで選びます。不戦勝は1勝で、実対局の再戦履歴には含めません。',
       '途中棄権者は以降の組合せから除外します。再戦なしで組合せが成立しない場合はエラーを表示します。',
       '※Windows版V127の組合せとの完全一致は未検証です。明日のデモではWeb版の現在の動作として説明してください。'

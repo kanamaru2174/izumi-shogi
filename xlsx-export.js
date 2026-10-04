@@ -45,6 +45,14 @@ function alignedStyle(styles,base,alignment){
  xf.setAttribute('applyAlignment','1');cellXfs.append(xf);cellXfs.setAttribute('count',String(xfs.length+1));
  return String(xfs.length);
 }
+
+function specialPairStyle(styles,base){
+ const ns=styles.documentElement.namespaceURI,cellXfs=styles.getElementsByTagName('cellXfs')[0],fonts=styles.getElementsByTagName('fonts')[0],borders=styles.getElementsByTagName('borders')[0];
+ let boldFont=[...fonts.children].findIndex(f=>f.localName==='font'&&f.getElementsByTagName('b').length);
+ if(boldFont<0){let f=fonts.children[0].cloneNode(true),b=styles.createElementNS(ns,'b');f.insertBefore(b,f.firstChild);fonts.append(f);fonts.setAttribute('count',String(fonts.children.length));boldFont=fonts.children.length-1}
+ let border=styles.createElementNS(ns,'border');for(const side of ['left','right','top','bottom']){let e=styles.createElementNS(ns,side);e.setAttribute('style','double');border.append(e)}border.append(styles.createElementNS(ns,'diagonal'));borders.append(border);borders.setAttribute('count',String(borders.children.length));let borderId=borders.children.length-1;
+ const xfs=[...cellXfs.children].filter(x=>x.localName==='xf'),xf=(xfs[Number(base)]||xfs[0]).cloneNode(true);xf.setAttribute('fontId',String(boldFont));xf.setAttribute('borderId',String(borderId));xf.setAttribute('applyFont','1');xf.setAttribute('applyBorder','1');cellXfs.append(xf);cellXfs.setAttribute('count',String(xfs.length+1));return String(xfs.length)
+}
 function fixSummaryLayout(doc,stat,styles,noteWidth){
  const ns=doc.documentElement.namespaceURI,last=stat+7;
  const titles=['順位','勝数','負数','直接対決','SC','SB','MD','備考'];
@@ -95,7 +103,31 @@ function fixSummaryLayout(doc,stat,styles,noteWidth){
  if(merges){for(let m of [...merges.children]){let ref=m.getAttribute('ref')||'',a=ref.match(/^([A-Z]+)\d+/);if(a&&cellColumn(a[1])>last)m.remove()}merges.setAttribute('count',String(merges.children.length))}
  let dim=doc.getElementsByTagName('dimension')[0];if(dim)dim.setAttribute('ref','A1:'+colName(last)+'56');
 }
-function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);let opp=pair?(pair.p1===p.no?pair.p2:pair.p1):null;if(opp)putCell(doc,r,5+(round-1)*2,opp);let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×');else if(round===cls.currentRound&&cls.drafts&&opp){let k=[p.no,opp].sort((a,b)=>a-b).join(':'),winner=Number(cls.drafts[k]);if(winner)putCell(doc,r,6+(round-1)*2,winner===p.no?'〇':'×')}}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}const styles=xmlParse(entries.get('xl/styles.xml'));const noteWidth=autoFitNoteWidth(noteTextsFromSheet(doc,stat+7));fixSummaryLayout(doc,stat,styles,noteWidth);entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
+function sheetUpdate(entries,paths,cls,withRanking,rankCallback){
+ let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');
+ let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x])),specialCells=[];
+ for(let row=7;row<=56;row++){
+  let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;
+  putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);
+  for(let round=1;round<=cls.rounds;round++){
+   let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no),opp=pair?(pair.p1===p.no?pair.p2:pair.p1):null,oppCol=5+(round-1)*2;
+   if(opp){putCell(doc,r,oppCol,opp);if(pair?.special)specialCells.push({row:r,col:oppCol})}
+   let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);
+   if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×');else if(round===cls.currentRound&&cls.drafts&&opp){let k=[p.no,opp].sort((a,b)=>a-b).join(':'),winner=Number(cls.drafts[k]);if(winner)putCell(doc,r,6+(round-1)*2,winner===p.no?'〇':'×')}
+  }
+  let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}
+ }
+ // 現行表の下を2行空け、B列から特殊組合せ理由を1対局1行で記録する。
+ const lastTableRow=6+cls.players.length,reasonStart=lastTableRow+3;let reasonRow=reasonStart;
+ for(let round=1;round<=cls.rounds;round++)for(const pair of (cls.pairings?.[round]||[]))if(pair.p2&&pair.special){let r=getRow(doc,reasonRow++);putCell(doc,r,2,`${round}回戦-NO_${pair.p1}とNO_${pair.p2}-${pair.specialReason}`)}
+ const styles=xmlParse(entries.get('xl/styles.xml'));
+ // 特殊組合せの相手番号セルだけ、文字を太字＋四辺二重罫線にする。塗りつぶし色は変更しない。
+ const styleCache=new Map();for(const x of specialCells){let row=getRow(doc,x.row),ref=colName(x.col)+x.row,c=[...row.children].find(v=>v.localName==='c'&&v.getAttribute('r')===ref);if(!c)continue;let base=c.getAttribute('s')||'0';if(!styleCache.has(base))styleCache.set(base,specialPairStyle(styles,base));c.setAttribute('s',styleCache.get(base))}
+ const noteWidth=autoFitNoteWidth(noteTextsFromSheet(doc,stat+7));fixSummaryLayout(doc,stat,styles,noteWidth);
+ // fixSummaryLayout may adjust styles elsewhere, but special opponent cells retain their dedicated style.
+ let dim=doc.getElementsByTagName('dimension')[0];if(dim&&reasonRow>reasonStart)dim.setAttribute('ref','A1:'+colName(stat+7)+Math.max(56,reasonRow-1));
+ entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))
+}
 // Keep only the selected class worksheet in a manually downloaded workbook.
 function keepSelectedWorksheet(entries,selectedName){
  const wb=xmlParse(entries.get('xl/workbook.xml'));
