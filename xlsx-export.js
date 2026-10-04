@@ -35,6 +35,16 @@ function noteTextsFromSheet(doc,col){
  }
  return result;
 }
+function alignedStyle(styles,base,alignment){
+ const ns=styles.documentElement.namespaceURI,cellXfs=styles.getElementsByTagName('cellXfs')[0];
+ const xfs=[...cellXfs.children].filter(x=>x.localName==='xf');
+ const xf=xfs[Number(base)]?.cloneNode(true)||xfs[0].cloneNode(true);
+ let a=[...xf.children].find(x=>x.localName==='alignment');
+ if(!a){a=styles.createElementNS(ns,'alignment');xf.append(a)}
+ for(const [k,v] of Object.entries(alignment))a.setAttribute(k,v);
+ xf.setAttribute('applyAlignment','1');cellXfs.append(xf);cellXfs.setAttribute('count',String(xfs.length+1));
+ return String(xfs.length);
+}
 function fixSummaryLayout(doc,stat,styles,noteWidth){
  const ns=doc.documentElement.namespaceURI,last=stat+7;
  const titles=['順位','勝数','負数','直接対決','SC','SB','MD','備考'];
@@ -48,21 +58,24 @@ function fixSummaryLayout(doc,stat,styles,noteWidth){
  const hEnd=existing(h,refEnd)?.getAttribute('s')||hMid;
  const subMid=existing(sub,refStat+1)?.getAttribute('s')||existing(sub,refStat)?.getAttribute('s');
  const subEnd=existing(sub,refEnd)?.getAttribute('s')||subMid;
+ const noteHeaderStyle=alignedStyle(styles,hEnd||hMid||'0',{horizontal:'center',vertical:'center',textRotation:'0',wrapText:'0'});
+ const noteBodyStyles=new Map();
+ const noteBodyStyle=base=>{if(!noteBodyStyles.has(base))noteBodyStyles.set(base,alignedStyle(styles,base,{horizontal:'left',vertical:'center',textRotation:'0'}));return noteBodyStyles.get(base)};
  const samples=[];
  for(let r=7;r<=56;r++){
   let row=getRow(doc,r),mid=existing(row,refStat)?.getAttribute('s'),end=existing(row,refEnd)?.getAttribute('s');
   samples.push({row,mid:mid||'3',end:end||mid||'3'});
  }
  for(let i=0;i<8;i++){
-  let c=ensure(h,stat+i);c.setAttribute('s',i===7?hEnd:i===0?hFirst:hMid);putCell(doc,h,stat+i,titles[i]);
+  let c=ensure(h,stat+i);c.setAttribute('s',i===7?noteHeaderStyle:i===0?hFirst:hMid);putCell(doc,h,stat+i,titles[i]);
   let h2=ensure(sub,stat+i);h2.setAttribute('s',i===7?subEnd:subMid);putCell(doc,sub,stat+i,null);
  }
- for(const {row,mid,end} of samples)for(let i=0;i<8;i++)ensure(row,stat+i).setAttribute('s',i===7?end:mid);
+ for(const {row,mid,end} of samples)for(let i=0;i<8;i++)ensure(row,stat+i).setAttribute('s',i===7?noteBodyStyle(end):mid);
  const merges=doc.getElementsByTagName('mergeCells')[0];
  if(merges){
   for(let m of [...merges.children]){
-   let ref=m.getAttribute('ref')||'',match=ref.match(/^([A-Z]+)5:([A-Z]+)6$/);
-   if(match&&cellColumn(match[1])>=stat)m.remove();
+   let ref=m.getAttribute('ref')||'',match=ref.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/);
+   if(match&&Number(match[2])<=6&&Number(match[4])>=5&&cellColumn(match[3])>=stat)m.remove();
   }
   for(let i=0;i<8;i++){let m=doc.createElementNS(ns,'mergeCell');m.setAttribute('ref',colName(stat+i)+'5:'+colName(stat+i)+'6');merges.append(m)}
   merges.setAttribute('count',String(merges.children.length));
@@ -82,7 +95,7 @@ function fixSummaryLayout(doc,stat,styles,noteWidth){
  if(merges){for(let m of [...merges.children]){let ref=m.getAttribute('ref')||'',a=ref.match(/^([A-Z]+)\d+/);if(a&&cellColumn(a[1])>last)m.remove()}merges.setAttribute('count',String(merges.children.length))}
  let dim=doc.getElementsByTagName('dimension')[0];if(dim)dim.setAttribute('ref','A1:'+colName(last)+'56');
 }
-function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×')}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}const styles=xmlParse(entries.get('xl/styles.xml'));const noteWidth=autoFitNoteWidth(noteTextsFromSheet(doc,stat+7));fixSummaryLayout(doc,stat,styles,noteWidth);entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
+function sheetUpdate(entries,paths,cls,withRanking,rankCallback){let path=paths.get(cls.className);if(!path||!entries.has(path))throw Error(cls.className+'のExcelシートが見つかりません');let doc=xmlParse(entries.get(path)),stat=5+cls.rounds*2,rs=withRanking&&Object.values(cls.results).some(x=>x.length)?rankCallback(cls):null,byNo=new Map((rs||[]).map(x=>[x.no,x]));for(let row=7;row<=56;row++){let p=cls.players[row-7],r=getRow(doc,row);for(let col=2;col<=stat+7;col++)putCell(doc,r,col,null);if(!p)continue;putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);for(let round=1;round<=cls.rounds;round++){let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(pair){let opp=pair.p1===p.no?pair.p2:pair.p1;if(opp)putCell(doc,r,5+(round-1)*2,opp)}let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×');else if(round===cls.currentRound&&cls.drafts&&pair&&opp){let k=[p.no,opp].sort((a,b)=>a-b).join(':'),winner=Number(cls.drafts[k]);if(winner)putCell(doc,r,6+(round-1)*2,winner===p.no?'〇':'×')}}let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}}const styles=xmlParse(entries.get('xl/styles.xml'));const noteWidth=autoFitNoteWidth(noteTextsFromSheet(doc,stat+7));fixSummaryLayout(doc,stat,styles,noteWidth);entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))}
 // Keep only the selected class worksheet in a manually downloaded workbook.
 function keepSelectedWorksheet(entries,selectedName){
  const wb=xmlParse(entries.get('xl/workbook.xml'));
@@ -145,7 +158,8 @@ function cleanClassWorkbook(cls,rankCallback){
    const opponent=pair?(pair.p1===p.no?pair.p2:pair.p1):null;
    const match=(cls.results?.[n]||[]).find(v=>v.p1===p.no||v.p2===p.no);
    cells.push(cell(r,5+(n-1)*2,opponent||''));
-   cells.push(cell(r,6+(n-1)*2,match?(match.bye||match.winner===p.no?'〇':'×'):''));
+   const draftWinner=n===cls.currentRound&&opponent?Number(cls.drafts?.[[p.no,opponent].sort((a,b)=>a-b).join(':')]):0;
+   cells.push(cell(r,6+(n-1)*2,match?(match.bye||match.winner===p.no?'〇':'×'):draftWinner?(draftWinner===p.no?'〇':'×'):''));
   }
   const q=byNo.get(p.no),values=q?[q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note]:Array(8).fill('');
   values.forEach((v,j)=>cells.push(cell(r,stat+j,v,j===7?3:1)));
@@ -153,7 +167,7 @@ function cleanClassWorkbook(cls,rankCallback){
  }
  const widths=[{n:1,w:1.75},{n:2,w:5.25},{n:3,w:15},{n:4,w:4.875}];
  for(let i=5;i<stat;i++)widths.push({n:i,w:i%2===1?5.625:6.875});
- [4.625,4.625,4.625,4.625,4.625,4.625,4.625,20.375].forEach((w,i)=>widths.push({n:stat+i,w}));
+ [4.625,4.625,4.625,4.625,4.625,4.625,4.625,autoFitNoteWidth((ranked||[]).map(x=>x.note))].forEach((w,i)=>widths.push({n:stat+i,w}));
  const cols=widths.map(({n,w})=>`<col min="${n}" max="${n}" width="${w}" customWidth="1"/>`).join('');
  const merges=['B2:C2','D2:G2','B3:C3','D3:G3','B5:B6','C5:C6','D5:D6'];
  for(let n=1;n<=cls.rounds;n++){let a=5+(n-1)*2;merges.push(`${col(a)}5:${col(a+1)}5`)}
