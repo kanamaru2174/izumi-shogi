@@ -220,7 +220,7 @@ $('complete').onclick=async()=>{let beforeCommit;try{let errors=checkCurrentRoun
  await yukFolder.queueState({classes:tournamentClasses,active:activeClassIndex});
  const blob=await exportTournamentExcel(tournamentClasses,rankForClass);
  await yukFolder.write('対戦表_大会用_'+historyStamp()+'.xlsx',blob);
- render();say(`${round}回戦を確定し、大会用Excelと日時付き履歴Excelを保存しました`)}catch(e){if(typeof beforeCommit!=='undefined'){d=JSON.parse(beforeCommit);tournamentClasses[activeClassIndex]=d;render();try{await yukFolder.queueState({classes:tournamentClasses,active:activeClassIndex})}catch(_){/* report original save error */}}say('回戦は確定していません：'+e.message)}};
+ sortByRank=false;sortColumn='NO';sortAscending=true;render();say(`${round}回戦を確定し、大会用Excelと日時付き履歴Excelを保存しました`)}catch(e){if(typeof beforeCommit!=='undefined'){d=JSON.parse(beforeCommit);tournamentClasses[activeClassIndex]=d;render();try{await yukFolder.queueState({classes:tournamentClasses,active:activeClassIndex})}catch(_){/* report original save error */}}say('回戦は確定していません：'+e.message)}};
 function downloadBackup(){if(!d)return say('大会がありません');const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download='yukuhashi-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);say('JSONの保存を開始しました。ダウンロードフォルダーにファイルがあることを確認してください。');}
 
 
