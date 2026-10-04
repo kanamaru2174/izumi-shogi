@@ -133,16 +133,18 @@ function sheetUpdate(entries,paths,cls,withRanking,rankCallback){
   putCell(doc,r,2,p.no);putCell(doc,r,3,p.name);if(p.withdrawn)putCell(doc,r,4,1);
   for(let round=1;round<=cls.rounds;round++){
    let pair=(cls.pairings[round]||[]).find(x=>x.p1===p.no||x.p2===p.no),opp=pair?(pair.p1===p.no?pair.p2:pair.p1):null,oppCol=5+(round-1)*2;
-   if(opp){putCell(doc,r,oppCol,opp);if(pair?.special)specialCells.push({row:r,col:oppCol})}
+   if(opp){putCell(doc,r,oppCol,opp);if(pair?.special)specialCells.push({row:row,col:oppCol})}
    let match=(cls.results[round]||[]).find(x=>x.p1===p.no||x.p2===p.no);
    if(match)putCell(doc,r,6+(round-1)*2,match.bye||match.winner===p.no?'〇':'×');else if(round===cls.currentRound&&cls.drafts&&opp){let k=[p.no,opp].sort((a,b)=>a-b).join(':'),winner=Number(cls.drafts[k]);if(winner)putCell(doc,r,6+(round-1)*2,winner===p.no?'〇':'×')}
   }
   let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}
  }
  // 現行表の下を2行空け、B列から特殊組合せ理由を1対局1行で記録する。
- const lastTableRow=6+cls.players.length,reasonStart=lastTableRow+3;let reasonRow=reasonStart;
- for(let round=1;round<=cls.rounds;round++)for(const pair of (cls.pairings?.[round]||[]))if(pair.p2&&pair.special){let r=getRow(doc,reasonRow++);putCell(doc,r,2,`${round}回戦-NO_${pair.p1}とNO_${pair.p2}-${pair.specialReason}`)}
+ const lastTableRow=6+cls.players.length,reasonStart=lastTableRow+3;let reasonRow=reasonStart,reasonCells=[];
+ for(let round=1;round<=cls.rounds;round++)for(const pair of (cls.pairings?.[round]||[]))if(pair.p2&&pair.special){let rr=reasonRow++,r=getRow(doc,rr);putCell(doc,r,2,`${round}回戦-NO_${pair.p1}とNO_${pair.p2}-${pair.specialReason}`);reasonCells.push({row:rr,col:2})}
  const styles=xmlParse(entries.get('xl/styles.xml'));
+ // 表の下に追加した特殊組合せメッセージは、元セルの中央揃えを継承せず必ず左寄せにする。
+ const reasonStyleCache=new Map();for(const x of reasonCells){let row=getRow(doc,x.row),ref=colName(x.col)+x.row,c=[...row.children].find(v=>v.localName==='c'&&v.getAttribute('r')===ref);if(!c)continue;let base=c.getAttribute('s')||'0';if(!reasonStyleCache.has(base))reasonStyleCache.set(base,alignedStyle(styles,base,{horizontal:'left',vertical:'center',textRotation:'0'}));c.setAttribute('s',reasonStyleCache.get(base))}
  // 特殊組合せの相手番号セルだけ、文字を太字＋四辺二重罫線にする。塗りつぶし色は変更しない。
  const styleCache=new Map();for(const x of specialCells){let row=getRow(doc,x.row),ref=colName(x.col)+x.row,c=[...row.children].find(v=>v.localName==='c'&&v.getAttribute('r')===ref);if(!c)continue;let base=c.getAttribute('s')||'0';if(!styleCache.has(base))styleCache.set(base,specialPairStyle(styles,base));c.setAttribute('s',styleCache.get(base))}
  const noteWidth=autoFitNoteWidth(noteTextsFromSheet(doc,stat+7));fixSummaryLayout(doc,stat,styles,noteWidth);
