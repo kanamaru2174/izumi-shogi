@@ -201,7 +201,8 @@ async function downloadCurrentClassExcel(cls,rankCallback){
  entries.set('xl/_rels/workbook.xml.rels',ser(rels));
  entries.set('[Content_Types].xml',ser(ct));
  const blob=zipStored(entries),url=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=url;a.download='対戦表_'+String(cls.className).replace(/[\\/:*?"<>|]/g,'_')+'.xlsx';
+ const now=new Date(),pad=n=>String(n).padStart(2,'0');const stamp=now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds());
+ a.href=url;a.download='対戦表_'+String(cls.className).replace(/[\\/:*?"<>|]/g,'_')+'_'+stamp+'.xlsx';
  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
  return blob;
 }
