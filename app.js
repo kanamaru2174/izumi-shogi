@@ -309,8 +309,8 @@ $('exportCurrentExcel').onclick=async()=>{
  const btn=$('exportCurrentExcel');btn.disabled=true;
  try{
   if(!d)throw Error('クラスが選択されていません');
-  await downloadCurrentClassExcel(d,rankForClass);
-  say(d.className+'クラスのExcelダウンロードを開始しました。');
+  const out=await downloadCurrentClassExcel(d,rankForClass);
+  say(d.className+'クラスのExcelを大会フォルダに保存しました：'+out.fileName);
  }catch(e){say('Excel出力失敗：'+e.message);alert('Excel出力失敗：'+e.message)}
  finally{btn.disabled=false}
 };

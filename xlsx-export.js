@@ -270,11 +270,12 @@ async function downloadCurrentClassExcel(cls,rankCallback){
  entries.set('xl/workbook.xml',ser(workbook));
  entries.set('xl/_rels/workbook.xml.rels',ser(rels));
  entries.set('[Content_Types].xml',ser(ct));
- const blob=zipStored(entries),url=URL.createObjectURL(blob),a=document.createElement('a');
+ const blob=zipStored(entries);
  const now=new Date(),pad=n=>String(n).padStart(2,'0');const stamp=now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds());
- a.href=url;a.download='対戦表_'+String(cls.className).replace(/[\\/:*?"<>|]/g,'_')+'_'+stamp+'.xlsx';
- document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
- return blob;
+ const fileName='対戦表_'+String(cls.className).replace(/[\\/:*?"<>|]/g,'_')+'_'+stamp+'.xlsx';
+ if(!window.yukFolder?.handle)throw Error('大会フォルダが選択されていません');
+ await window.yukFolder.write(fileName,blob);
+ return {blob,fileName};
 }
 async function buildTournamentExcel(classes,rankCallback){let entries=await unzipEntries(getExcelTemplate()),paths=sheetPaths(entries);for(let cls of classes)sheetUpdate(entries,paths,cls,true,rankCallback);return zipStored(entries)}
 async function exportTournamentExcel(classes,rankCallback){let blob=await buildTournamentExcel(classes,rankCallback);if(window.yukFolder?.handle){await window.yukFolder.write('対戦表_大会用.xlsx',blob);return blob}let url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='対戦表_大会用.xlsx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);return blob}
