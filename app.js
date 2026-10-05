@@ -395,3 +395,34 @@ function updateInputAssist(){
 }
 
 function rankForClass(cls){const old=d;try{d=cls;return rank()}finally{d=old}}
+
+
+// V17: vertically resize the match table by dragging the divider below it.
+(function(){
+  function setupMatchResizer(){
+    const box=document.getElementById('matches');
+    const bar=document.getElementById('matches-resizer');
+    if(!box||!bar||bar.dataset.ready==='1') return;
+    bar.dataset.ready='1';
+    let startY=0,startH=0;
+    const move=(e)=>{
+      const h=Math.max(180,Math.min(window.innerHeight-180,startH+(e.clientY-startY)));
+      box.style.height=h+'px';
+      box.style.maxHeight='none';
+    };
+    const up=()=>{
+      document.removeEventListener('pointermove',move);
+      document.removeEventListener('pointerup',up);
+      document.body.classList.remove('resizing-matches');
+    };
+    bar.addEventListener('pointerdown',(e)=>{
+      startY=e.clientY; startH=box.getBoundingClientRect().height;
+      document.body.classList.add('resizing-matches');
+      document.addEventListener('pointermove',move);
+      document.addEventListener('pointerup',up);
+      e.preventDefault();
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',setupMatchResizer);
+  else setupMatchResizer();
+})();
