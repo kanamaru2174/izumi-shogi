@@ -174,31 +174,39 @@ function openHistoryWindow(){
  const win=window.open('','yukuhashi_history','width=1220,height=760,resizable=yes,scrollbars=yes');
  if(!win)return say('回戦履歴を開けません。ブラウザのポップアップを許可してください。');
  const doc=win.document;
- doc.open();doc.write('<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>回戦履歴</title><style>body{font-family:"Yu Gothic UI",Meiryo,sans-serif;margin:10px;background:#f0f0f0;font-size:14px}header{display:flex;gap:12px;align-items:center;margin-bottom:12px}button,select{padding:7px;font:inherit}#grid{max-height:calc(100vh - 85px);overflow:auto;background:white;border:1px solid #aaa}table{border-collapse:collapse;white-space:nowrap;font-size:14px;width:max-content;table-layout:fixed}th,td{border:1px solid #bbb;padding:2px 3px;text-align:center;box-sizing:border-box}th{background:#eee;position:sticky;top:0;height:49px;z-index:1}th.name,td.name{width:150px;min-width:150px;text-align:left}th.note,td.note{width:540px;min-width:540px;text-align:left;white-space:normal;overflow-wrap:anywhere}th.number,td.number{width:52px;min-width:52px}th.opponent,td.opponent{width:48px;min-width:48px}th.result,td.result{width:42px;min-width:42px}th.direct,td.direct{width:76px;min-width:76px}.rank1{background:#83cceb}.rank2{background:#f7c7ac}.rank3{background:#f191ea}</style></head><body><header><label for="round">表示する回戦</label><select id="round"></select><button id="close">最新画面に戻る</button></header><div id="grid"></div></body></html>');doc.close();
+ doc.open();doc.write('<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>回戦履歴</title><style>body{font-family:"Yu Gothic UI",Meiryo,sans-serif;margin:10px;background:#f0f0f0;font-size:14px}header{display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap}button,select{padding:7px;font:inherit}#msg{min-width:240px}#grid{max-height:calc(100vh - 85px);overflow:auto;background:white;border:1px solid #aaa}table{border-collapse:collapse;white-space:nowrap;font-size:14px;width:max-content;table-layout:fixed}th,td{border:1px solid #bbb;padding:2px 3px;text-align:center;box-sizing:border-box}th{background:#eee;position:sticky;top:0;height:49px;z-index:1;cursor:pointer;user-select:none}th:hover{background:#ddd}th.name,td.name{width:150px;min-width:150px;text-align:left}th.note,td.note{width:540px;min-width:540px;text-align:left;white-space:normal;overflow-wrap:anywhere}th.number,td.number{width:52px;min-width:52px}th.opponent,td.opponent{width:48px;min-width:48px}th.result,td.result{width:42px;min-width:42px}th.direct,td.direct{width:76px;min-width:76px}.rank1{background:#83cceb}.rank2{background:#f7c7ac}.rank3{background:#f191ea}</style></head><body><header><label for="round">表示する回戦</label><select id="round"></select><button id="excel">Excel出力</button><button id="close">最新画面に戻る</button><span id="msg"></span></header><div id="grid"></div></body></html>');doc.close();
  doc.title=source.className+' 回戦履歴';
  const selector=doc.getElementById('round');
  for(let r=1;r<=source.currentRound;r++){const opt=doc.createElement('option');opt.value=String(r);opt.textContent='第'+r+'回戦';selector.append(opt)}
  if(source.completed){const opt=doc.createElement('option');opt.value='final';opt.textContent='最終結果';selector.append(opt)}
  selector.selectedIndex=selector.options.length-1;
- const close=()=>win.close();doc.getElementById('close').onclick=close;
- win.onkeydown=e=>{if(e.key==='Escape')close()};
- const add=(tr,value,cls)=>{const cell=doc.createElement(tr.parentNode?.tagName==='THEAD'?'th':'td');cell.textContent=value??'';if(cls)cell.className=cls;tr.append(cell)};
+ const close=()=>win.close();doc.getElementById('close').onclick=close;win.onkeydown=e=>{if(e.key==='Escape')close()};
+ const add=(tr,value,cls)=>{const cell=doc.createElement(tr.parentNode?.tagName==='THEAD'?'th':'td');cell.textContent=value??'';if(cls)cell.className=cls;tr.append(cell);return cell};
+ let sortKey='NO',sortAsc=true,currentSnapshot=null,currentRanks=[];
+ const makeSnapshot=()=>{const final=selector.value==='final';const r=final?source.currentRound:Number(selector.value);return {...source,currentRound:r,pairings:Object.fromEntries(Object.entries(source.pairings).filter(([n])=>Number(n)<=r)),results:Object.fromEntries(Object.entries(source.results).filter(([n])=>Number(n)<=r)),drafts:{},completed:final,awaitingNextRound:false}};
+ const getRanks=snapshot=>{const previous=d;try{d=snapshot;return rank()}finally{d=previous}};
  const draw=()=>{
-  const final=selector.value==='final';const r=final?source.currentRound:Number(selector.value);
-  const snapshot={...source,currentRound:r,pairings:Object.fromEntries(Object.entries(source.pairings).filter(([n])=>Number(n)<=r)),results:Object.fromEntries(Object.entries(source.results).filter(([n])=>Number(n)<=r)),drafts:{},completed:final};
-  const previous=d;let ranks;try{d=snapshot;ranks=rank()}finally{d=previous}
-  const byNo=Object.fromEntries(ranks.map(x=>[x.no,x]));const t=doc.createElement('table');const thead=doc.createElement('thead'),head=doc.createElement('tr');thead.append(head);t.append(thead);
-  if(final){for(const label of ['順位','NO','名前','勝数','負数','直接対決','SC','SB','MD','備考'])add(head,label,label==='名前'?'name':label==='備考'?'note':label==='直接対決'?'direct':'number')}
-  else{for(const label of ['NO','名前'])add(head,label,label==='名前'?'name':'number');for(let rr=1;rr<=r;rr++){add(head,'第'+rr+'回戦 相手番号','opponent');add(head,'勝敗','result')}for(const label of ['順位','勝数','負数','備考'])add(head,label,label==='備考'?'note':'number')}
-  const body=doc.createElement('tbody');t.append(body);
-  const players=final?[...source.players].sort((a,b)=>(byNo[a.no]?.rank??999)-(byNo[b.no]?.rank??999)||a.no-b.no):[...source.players].sort((a,b)=>a.no-b.no);
-  for(const p of players){const x=byNo[p.no]||{},tr=doc.createElement('tr');if(final&&x.rank<=3)tr.className='rank'+x.rank;body.append(tr);
-   if(final){for(const [v,c] of [[x.rank,'number'],[p.no,'number'],[p.name,'name'],[x.wins,'number'],[x.losses,'number'],[x.directText,'direct'],[x.sc,'number'],[x.sb,'number'],[x.md,'number'],[x.note,'note']])add(tr,v,c)}
-   else{add(tr,p.no,'number');add(tr,p.name,'name');for(let rr=1;rr<=r;rr++){const pair=(source.pairings[rr]||[]).find(q=>q.p1===p.no||q.p2===p.no);const opp=pair?(pair.p1===p.no?pair.p2:pair.p1):null;add(tr,opp||'','opponent');const result=(source.results[rr]||[]).find(q=>pair&&((q.p1===pair.p1&&q.p2===pair.p2)||(q.p1===pair.p2&&q.p2===pair.p1)));add(tr,result?(result.winner===p.no?'〇':'×'):(opp===0?'〇':''),'result')}for(const [v,c] of [[x.rank,'number'],[x.wins,'number'],[x.losses,'number'],[x.note,'note']])add(tr,v,c)}
+  const final=selector.value==='final';const r=final?source.currentRound:Number(selector.value);currentSnapshot=makeSnapshot();currentRanks=getRanks(currentSnapshot);
+  const byNo=Object.fromEntries(currentRanks.map(x=>[x.no,x]));const t=doc.createElement('table'),thead=doc.createElement('thead'),head=doc.createElement('tr');thead.append(head);t.append(thead);
+  const defs=[];
+  if(final){defs.push(['順位','number',p=>byNo[p.no]?.rank??999],['NO','number',p=>p.no],['名前','name',p=>p.name],['勝数','number',p=>byNo[p.no]?.wins??0],['負数','number',p=>byNo[p.no]?.losses??0],['直接対決','direct',p=>byNo[p.no]?.directText??''],['SC','number',p=>byNo[p.no]?.sc??0],['SB','number',p=>byNo[p.no]?.sb??0],['MD','number',p=>byNo[p.no]?.md??0],['備考','note',p=>byNo[p.no]?.note??'']);}
+  else{
+   defs.push(['NO','number',p=>p.no],['名前','name',p=>p.name]);
+   for(let rr=1;rr<=r;rr++){
+    defs.push(['第'+rr+'回戦 相手番号','opponent',p=>{const pair=(source.pairings[rr]||[]).find(q=>q.p1===p.no||q.p2===p.no);return pair?(pair.p1===p.no?pair.p2:pair.p1):''}]);
+    defs.push(['第'+rr+'回戦 勝敗','result',p=>{const pair=(source.pairings[rr]||[]).find(q=>q.p1===p.no||q.p2===p.no);if(!pair)return '';const opp=pair.p1===p.no?pair.p2:pair.p1;const result=(source.results[rr]||[]).find(q=>(q.p1===pair.p1&&q.p2===pair.p2)||(q.p1===pair.p2&&q.p2===pair.p1));return result?(result.winner===p.no?'〇':'×'):(opp===0?'〇':'')}]);
+   }
+   defs.push(['順位','number',p=>byNo[p.no]?.rank??999],['勝数','number',p=>byNo[p.no]?.wins??0],['負数','number',p=>byNo[p.no]?.losses??0],['備考','note',p=>byNo[p.no]?.note??'']);
   }
+  for(const [label,cls,getter] of defs){const th=add(head,label+(sortKey===label?(sortAsc?' ▲':' ▼'):''),cls);th.title='クリックで並べ替え';th.onclick=()=>{if(sortKey===label)sortAsc=!sortAsc;else{sortKey=label;sortAsc=true}draw()}}
+  let players=[...source.players];const def=defs.find(x=>x[0]===sortKey)||defs[0],getter=def[2];players.sort((a,b)=>{let av=getter(a),bv=getter(b),cmp;if(typeof av==='number'&&typeof bv==='number')cmp=av-bv;else cmp=String(av??'').localeCompare(String(bv??''),'ja',{numeric:true});return (sortAsc?cmp:-cmp)||a.no-b.no});
+  const body=doc.createElement('tbody');t.append(body);
+  for(const p of players){const x=byNo[p.no]||{},tr=doc.createElement('tr');if(final&&x.rank<=3)tr.className='rank'+x.rank;body.append(tr);for(const [,cls,getter] of defs)add(tr,getter(p),cls)}
   doc.getElementById('grid').replaceChildren(t);
  };
- selector.onchange=draw;draw();win.focus();
+ selector.onchange=()=>{sortKey=selector.value==='final'?'順位':'NO';sortAsc=true;draw()};
+ doc.getElementById('excel').onclick=async()=>{const btn=doc.getElementById('excel'),msg=doc.getElementById('msg');btn.disabled=true;try{if(!currentSnapshot)draw();const label=selector.value==='final'?'最終結果':'第'+selector.value+'回戦履歴';const out=await downloadCurrentClassExcel(currentSnapshot,rankForClass,label);msg.textContent='保存しました：'+out.fileName}catch(e){msg.textContent='Excel出力失敗：'+e.message}finally{btn.disabled=false}};
+ draw();win.focus();
 }
 function showAux(kind){if(!d)return;currentAux=kind;let body=$('auxBody');body.replaceChildren();$('aux').hidden=false;let rs=rank();if(kind==='transfer'){$('auxTitle').textContent='転記';let t=el('table');let h=el('tr');for(let s of ['NO','名前',d.completed?'順位':'相手NO'])h.append(el('th',s));t.append(h);for(let p of [...d.players].sort((a,b)=>a.no-b.no)){let tr=el('tr');for(let s of [p.no,p.name,d.completed?rs.find(x=>x.no===p.no)?.rank??'':opponent(p.no,d.currentRound)||''])tr.append(el('td',String(s)));t.append(tr)}body.append(t)}else if(kind==='history'){$('auxTitle').textContent='回戦履歴';for(let [round,results] of Object.entries(d.results)){let h=el('h4','第'+round+'回戦');body.append(h);let t=el('table');for(let r of results){let tr=el('tr');tr.append(el('td',String(r.p1)),el('td',r.p2?String(r.p2):'不戦勝'),el('td','勝者 '+r.winner));t.append(tr)}body.append(t)}}else{$('auxTitle').textContent='ヘルプ';
   const sections=[

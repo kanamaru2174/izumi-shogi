@@ -140,7 +140,10 @@ function sheetUpdate(entries,paths,cls,withRanking,rankCallback){
   let q=byNo.get(p.no);if(q){for(let [i,v] of [q.rank,q.wins,q.losses,q.directText,q.sc,q.sb,q.md,q.note].entries())putCell(doc,r,stat+i,v)}
  }
  // 現行表の下を2行空け、B列から特殊組合せ理由を1対局1行で記録する。
- const lastTableRow=6+cls.players.length,reasonStart=lastTableRow+3;let reasonRow=reasonStart,reasonCells=[];
+ const lastTableRow=6+cls.players.length,reasonStart=lastTableRow+3;
+ // 参加者最終行より下にテンプレート由来の不要な罫線・書式を残さない。
+ for(let rr=lastTableRow+1;rr<=56;rr++){let row=getRow(doc,rr);for(const c of [...row.children]){if(c.localName!=='c')continue;let m=(c.getAttribute('r')||'').match(/^([A-Z]+)(\d+)$/);if(!m)continue;let n=0;for(const ch of m[1])n=n*26+ch.charCodeAt(0)-64;if(n>=2&&n<=stat+7)c.remove()}}
+ let reasonRow=reasonStart,reasonCells=[];
  for(let round=1;round<=cls.rounds;round++)for(const pair of (cls.pairings?.[round]||[]))if(pair.p2&&pair.special){let rr=reasonRow++,r=getRow(doc,rr);putCell(doc,r,2,`${round}回戦-NO_${pair.p1}とNO_${pair.p2}-${pair.specialReason}`);reasonCells.push({row:rr,col:2})}
  const styles=xmlParse(entries.get('xl/styles.xml'));
  // 表の下に追加した特殊組合せメッセージは、元セルの中央揃えを継承せず必ず左寄せにする。
@@ -239,7 +242,7 @@ function cleanClassWorkbook(cls,rankCallback){
 }
 // Export the currently selected class by editing the supplied ORIGINAL workbook.
 // No cell styles, widths, row heights or merged ranges are recreated.
-async function downloadCurrentClassExcel(cls,rankCallback){
+async function downloadCurrentClassExcel(cls,rankCallback,historyLabel=""){
  if(typeof EXACT_EXCEL_FORMAT_B64!=='string')throw Error('Excel原本が読み込まれていません');
  const entries=await unzipEntries(fromB64(EXACT_EXCEL_FORMAT_B64));
  const paths=sheetPaths(entries);
@@ -272,7 +275,7 @@ async function downloadCurrentClassExcel(cls,rankCallback){
  entries.set('[Content_Types].xml',ser(ct));
  const blob=zipStored(entries);
  const now=new Date(),pad=n=>String(n).padStart(2,'0');const stamp=now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds());
- const fileName='対戦表_'+String(cls.className).replace(/[\\/:*?"<>|]/g,'_')+'_'+stamp+'.xlsx';
+ const safeLabel=historyLabel?'_'+String(historyLabel).replace(/[\\/:*?"<>|]/g,'_'):'';const fileName='対戦表_'+String(cls.className).replace(/[\\/:*?"<>|]/g,'_')+safeLabel+'_'+stamp+'.xlsx';
  if(!window.yukFolder?.handle)throw Error('大会フォルダが選択されていません');
  await window.yukFolder.write(fileName,blob);
  return {blob,fileName};
