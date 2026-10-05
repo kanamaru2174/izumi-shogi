@@ -141,7 +141,7 @@ function render(){if(!d)return;
    b.onclick=()=>{activeClassIndex=i;d=tournamentClasses[i];sortByRank=false;sortColumn='NO';sortAscending=true;currentAux='';$('aux').hidden=true;render();};
    tabs.append(b);
  });
-$('workspace').hidden=false;$('eventtitle').textContent=d.name;$('viewclass').value=d.className;$('viewplayers').value=d.players.length;$('viewrounds').value=d.rounds;let waiting=!!d.awaitingNextRound;$('phase').textContent=d.completed?'大会終了':waiting?'進行：次回戦準備':d.currentRound?'進行：第'+d.currentRound+'回戦':'進行：第1回戦準備';$('status').textContent=d.completed?'大会終了：最終結果を確認してください。':waiting?`第${d.currentRound}回戦を確定しました。次回戦から棄権する参加者を確認して［第${d.currentRound+1}回戦を作成］を押してください。　✓ 自動保存`:d.currentRound?`現在：第${d.currentRound}回戦　勝敗を入力して［入力完了］を押してください。　✓ 自動保存`:'当日の欠席者を棄権にチェックしてから［第1回戦を作成］を押してください。　✓ 自動保存';$('start').hidden=d.completed||(!waiting&&!!d.currentRound);$('start').disabled=d.completed||(!waiting&&!!d.currentRound);$('start').textContent=waiting?`第${d.currentRound+1}回戦を作成`:'第1回戦を作成';$('complete').disabled=!d.currentRound||d.completed||waiting||!!d.results[d.currentRound];$('undo').disabled=!d.currentRound||!!d.undoUsed||(d.completed||waiting?!d.results[d.currentRound]:d.currentRound<2||!d.results[d.currentRound-1]);
+$('workspace').hidden=false;$('eventtitle').textContent=d.name;$('viewclass').value=d.className;$('viewplayers').value=d.players.length;$('viewrounds').value=d.rounds;let waiting=!!d.awaitingNextRound;$('phase').textContent=d.completed?'大会終了':waiting?'進行：次回戦準備':d.currentRound?'進行：第'+d.currentRound+'回戦':'進行：第1回戦準備';$('status').textContent=d.completed?'大会終了：最終結果を確認してください。':waiting?`第${d.currentRound}回戦を確定しました。次回戦から棄権する参加者を確認して［第${d.currentRound+1}回戦を作成］を押してください。　✓ 自動保存`:d.currentRound?`現在：第${d.currentRound}回戦　勝敗を入力して［入力完了］を押してください。　✓ 自動保存`:'当日の欠席者を棄権にチェックしてから［第1回戦を作成］を押してください。　✓ 自動保存';$('start').hidden=d.completed||(!waiting&&!!d.currentRound);$('start').disabled=d.completed||(!waiting&&!!d.currentRound);$('start').textContent=waiting?`第${d.currentRound+1}回戦を作成`:'第1回戦を作成';$('complete').disabled=!d.currentRound||d.completed||waiting||!!d.results[d.currentRound];$('undo').disabled=!d.currentRound||!!d.undoUsed||(d.currentRound===1&&!d.results[1]?false:(d.completed||waiting?!d.results[d.currentRound]:d.currentRound<2||!d.results[d.currentRound-1]));
 let st=stats(),ranks=d.results&&Object.keys(d.results).length?rank():[],byNo=Object.fromEntries(ranks.map(x=>[x.no,x]));let ordered=[...d.players].sort((a,b)=>{
  const val=p=>{const x=byNo[p.no]||{};if(sortColumn==='NO')return p.no;if(sortColumn==='名前')return p.name;if(sortColumn==='棄権 フラグ')return Number(!!p.withdrawn);if(sortColumn==='順位')return x.rank??999;if(sortColumn==='勝数')return x.wins??0;if(sortColumn==='負数')return x.losses??0;if(sortColumn==='直接対決')return x.direct??0;if(['SC','SB','MD'].includes(sortColumn))return x[sortColumn.toLowerCase()]??0;if(sortColumn==='備考')return x.note??'';const m=sortColumn.match(/^第(\d+)回戦 (相手番号|勝敗)$/);if(m){const r=Number(m[1]);return m[2]==='相手番号'?(opponent(p.no,r)||0):(resultFor(p.no,r)||'')}return p.no};
  const av=val(a),bv=val(b);const cmp=typeof av==='string'?String(av).localeCompare(String(bv),'ja'):av-bv;return (sortAscending?cmp:-cmp)||a.no-b.no;
@@ -204,14 +204,14 @@ function showAux(kind){if(!d)return;currentAux=kind;let body=$('auxBody');body.r
   const sections=[
     ['1．大会の準備と基本操作',[
       'WindowsのChromeまたはEdgeで起動します。デモでは本番データと別の大会フォルダを用意してください。',
-      '「大会準備」で「新しい大会を開始」を選び、先に大会フォルダを指定し、次に準備用Excelを選択してから「第1回戦を作成」を押します。',
+      '「大会準備」で「新しい大会を開始」を選び、先に大会フォルダを指定し、次に準備用Excelを選択してから「大会進行表を作成」を押します。',
       '「大会進行」でクラスのタブを選択し、対局の勝敗（〇・×）を入力します。一方の結果を入力すると相手側にも反映されます。',
       '全対局の入力後に「入力完了」を押すと、その回戦だけを確定します。次回戦からの棄権者を確認してから「第○回戦を作成」を押してください。',
       '「転記」で掲示用の相手番号、「回戦履歴」で過去の結果、「順位順」で現在の順位順表示、「元に戻す」で直前の入力完了の取り消しができます。',
       'ヘルプ内の「自動入力」は未入力の対局だけにランダムで結果を入れるデモ・テスト用です。実際の大会結果の入力には使用しないでください。'
     ]],
     ['2．対戦相手の決め方（現在のWeb版の実装）',[
-      '前日に準備用Excelの名簿をランダムに並べ替えて大会NOだけを確定し、相手番号空欄の対戦表を印刷します。当日は欠席者を確認してから第1回戦を作成します。',
+      '前日に「大会進行表を作成」を押し、参加者の氏名をランダムに並べ替え、1番から順に番号を付けた大会進行表を印刷します。当日は欠席者を確認してから第1回戦を作成します。',
       '第2回戦以降は再戦を避け、残り回戦も成立可能な候補を先読み確認します。その中で最大勝数差を最小にし、さらに大きな勝数差の対局数が少ない組合せを選びます。',
       '対戦相手番号の「※」は、先読み調整または2勝差以上の理由付き組合せです。相手番号にマウスを合わせると理由を確認できます。',
       '奇数人数の不戦勝は、過去の不戦勝が少ない人を優先し、その後に勝数などで選びます。不戦勝は1勝で、実対局の再戦履歴には含めません。',
@@ -281,8 +281,24 @@ function showCheck(){const errors=checkCurrentRound();showInputErrors(errors);al
 
 
 $('undo').onclick=async()=>{
- if(!d||!d.currentRound||d.undoUsed)return say('直前の入力完了は既に取り消しました。再度入力完了するまで戻せません。');
+ if(!d||!d.currentRound||d.undoUsed)return say('元に戻せる操作がありません。');
  if(!yukFolder.handle)return say('大会フォルダを選択してから操作してください');
+ // 第1回戦を作成した直後は、勝敗確定前なら組合せだけを取り消せる。
+ // 大会NO・氏名順・棄権設定は変更しない。
+ if(d.currentRound===1&&!d.results[1]){
+  if(!confirm('第1回戦の組合せを取り消しますか？ 大会NO・氏名の並びと棄権設定はそのまま残ります。'))return;
+  try{
+   await yukFolder.flush();
+   const stamp=historyStamp();
+   await yukFolder.write('大会進行データ_元に戻す前_'+stamp+'.json',new Blob([JSON.stringify({classes:tournamentClasses,active:activeClassIndex},null,2)],{type:'application/json'}));
+   delete d.pairings[1];delete d.pairingMeta[1];d.currentRound=0;d.awaitingNextRound=false;d.completed=false;d.drafts={};
+   save();await yukFolder.flush();render();
+   const blob=await exportTournamentExcel(tournamentClasses,rankForClass);
+   await yukFolder.write('対戦表_大会用.xlsx',blob);
+   say('第1回戦の組合せを取り消しました。棄権者を確認してから、もう一度［第1回戦を作成］を押してください。');
+  }catch(err){say('元に戻す処理でエラーが発生しました：'+err.message+'。大会フォルダのバックアップを確認してください。')}
+  return;
+ }
  const finalRound=!!d.completed,prev=(finalRound||d.awaitingNextRound)?d.currentRound:d.currentRound-1;
  if(!d.results[prev])return say('取り消せる直前回戦がありません');
  const question=finalRound?`大会終了を取り消し、第${prev}回戦の入力画面に戻しますか？`:d.awaitingNextRound?`第${prev}回戦の入力完了を取り消し、勝敗入力画面に戻しますか？`:`第${prev}回戦の入力完了を取り消しますか？ 現在の第${d.currentRound}回戦の組合せと入力は破棄されます。`;
@@ -349,7 +365,7 @@ $('excelMock').addEventListener('change', async e=>{
  try{
   excelPreparation=await parsePreparationXlsx(f);
   excelPreparation.sourceBytes=new Uint8Array(await f.arrayBuffer());
-  $('excelNotice').textContent='✓ チェックOK　大会名：'+excelPreparation.name+'　'+excelPreparation.classes.length+'クラス・参加者合計 '+excelPreparation.classes.reduce((n,c)=>n+c.players.length,0)+'名。大会NOをランダムに確定できます。';
+  $('excelNotice').textContent='✓ チェックOK　大会名：'+excelPreparation.name+'　'+excelPreparation.classes.length+'クラス・参加者合計 '+excelPreparation.classes.reduce((n,c)=>n+c.players.length,0)+'名。大会進行表を作成できます。';
   $('excelCreate').disabled=false;$('excelCreate').hidden=false;
  }catch(err){$('excelNotice').textContent='準備用Excelに問題があります：'+err.message}
 });
@@ -367,7 +383,7 @@ $('excelCreate').onclick=async()=>{
  activeClassIndex=0;d=tournamentClasses[0];
  try{setExcelTemplate(excelPreparation.sourceBytes);await yukFolder.write('対戦表_準備用.xlsx',new Blob([excelPreparation.sourceBytes]));await exportTournamentExcel(tournamentClasses,rankForClass)}catch(err){return say('大会用Excelの作成に失敗しました：'+err.message)}
  save();await yukFolder.flush();render();$('navprogress').click();
- say('全'+tournamentClasses.length+'クラスの大会NOをランダムに確定し、相手番号空欄の対戦表_大会用.xlsxを出力しました。当日は欠席者を確認してから第1回戦を作成してください。');
+ say('全'+tournamentClasses.length+'クラスの大会進行表を作成しました。当日は欠席者を確認してから第1回戦を作成してください。');
 };
 $('exitPrep').onclick=()=>{$('navprogress').click()};
 

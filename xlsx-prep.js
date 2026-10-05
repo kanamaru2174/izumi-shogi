@@ -15,13 +15,13 @@ async function parsePreparationXlsx(file){
   if(f.method!==0)throw Error('未対応のExcel圧縮方式です');return decoder.decode(data);
  }
  const xml=s=>{let x=new DOMParser().parseFromString(s,'application/xml');if(x.querySelector('parsererror'))throw Error('ExcelのXMLを解析できません');return x};
- const shared=[];if(files.has('xl/sharedStrings.xml')){let doc=xml(await read('xl/sharedStrings.xml'));for(let si of doc.getElementsByTagName('si'))shared.push([...si.getElementsByTagName('t')].map(t=>t.textContent).join(''))}
+ const visibleText=node=>[...node.children].map(ch=>ch.localName==='t'?(ch.textContent||''):ch.localName==='r'?[...ch.children].filter(x=>x.localName==='t').map(x=>x.textContent||'').join(''):'').join(''); const shared=[];if(files.has('xl/sharedStrings.xml')){let doc=xml(await read('xl/sharedStrings.xml'));for(let si of doc.getElementsByTagName('si'))shared.push(visibleText(si))}
  const workbook=xml(await read('xl/workbook.xml')),rels=xml(await read('xl/_rels/workbook.xml.rels'));
  const relation={};for(let r of rels.getElementsByTagName('Relationship'))relation[r.getAttribute('Id')]=r.getAttribute('Target');
  const sheets=[];
  for(let sheet of workbook.getElementsByTagName('sheet')){
   let id=sheet.getAttribute('r:id')||sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');let target=relation[id];if(!target)throw Error('シートの参照先がありません');let path=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');path=path.replace(/^xl\/xl\//,'xl/');
-  let doc=xml(await read(path)),cells={};for(let c of doc.getElementsByTagName('c')){let ref=c.getAttribute('r'),v=c.getElementsByTagName('v')[0]?.textContent||'';if(c.getAttribute('t')==='s')v=shared[Number(v)]||'';else if(c.getAttribute('t')==='inlineStr')v=[...c.getElementsByTagName('t')].map(t=>t.textContent).join('');cells[ref]=v}
+  let doc=xml(await read(path)),cells={};for(let c of doc.getElementsByTagName('c')){let ref=c.getAttribute('r'),v=c.getElementsByTagName('v')[0]?.textContent||'';if(c.getAttribute('t')==='s')v=shared[Number(v)]||'';else if(c.getAttribute('t')==='inlineStr'){const is=c.getElementsByTagName('is')[0];v=is?visibleText(is):'';}cells[ref]=v}
   sheets.push({name:sheet.getAttribute('name'),cells});
  }
  if(sheets.length<2)throw Error('大会名シートとクラス別シートが必要です');
