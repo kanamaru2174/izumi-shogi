@@ -151,8 +151,22 @@ function sheetUpdate(entries,paths,cls,withRanking,rankCallback){
  // 特殊組合せの相手番号セルだけ、文字を太字＋四辺二重罫線にする。塗りつぶし色は変更しない。
  const styleCache=new Map();for(const x of specialCells){let row=getRow(doc,x.row),ref=colName(x.col)+x.row,c=[...row.children].find(v=>v.localName==='c'&&v.getAttribute('r')===ref);if(!c)continue;let base=c.getAttribute('s')||'0';if(!styleCache.has(base))styleCache.set(base,specialPairStyle(styles,base));c.setAttribute('s',styleCache.get(base))}
  const noteWidth=autoFitNoteWidth(noteTextsFromSheet(doc,stat+7));fixSummaryLayout(doc,stat,styles,noteWidth);
- // fixSummaryLayout may adjust styles elsewhere, but special opponent cells retain their dedicated style.
- let dim=doc.getElementsByTagName('dimension')[0];if(dim&&reasonRow>reasonStart)dim.setAttribute('ref','A1:'+colName(stat+7)+Math.max(56,reasonRow-1));
+ // fixSummaryLayout はテンプレート互換のため56行目までセル書式を補う。
+ // 参加者最終行より下は、特殊組合せ理由のB列だけを残し、それ以外のセルを必ず削除する。
+ // これを fixSummaryLayout の後で行わないと、右側の順位～備考欄の罫線が再び下まで伸びてしまう。
+ const reasonRows=new Set(reasonCells.map(x=>x.row));
+ for(let rr=lastTableRow+1;rr<=56;rr++){
+  let row=getRow(doc,rr);
+  for(const c of [...row.children]){
+   if(c.localName!=='c')continue;
+   const ref=c.getAttribute('r')||'',m=ref.match(/^([A-Z]+)(\d+)$/);if(!m)continue;
+   const cc=cellColumn(m[1]);
+   if(!(reasonRows.has(rr)&&cc===2))c.remove();
+  }
+ }
+ // 特殊組合せセルは fixSummaryLayout 後も専用書式を維持する。
+ let dim=doc.getElementsByTagName('dimension')[0];
+ if(dim)dim.setAttribute('ref','A1:'+colName(stat+7)+Math.max(lastTableRow,reasonRow-1));
  entries.set('xl/styles.xml',new TextEncoder().encode(new XMLSerializer().serializeToString(styles)));entries.set(path,new TextEncoder().encode(new XMLSerializer().serializeToString(doc)))
 }
 // Keep only the selected class worksheet in a manually downloaded workbook.
