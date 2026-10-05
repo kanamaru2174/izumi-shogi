@@ -141,12 +141,12 @@ function render(){if(!d)return;
    b.onclick=()=>{activeClassIndex=i;d=tournamentClasses[i];sortByRank=false;sortColumn='NO';sortAscending=true;currentAux='';$('aux').hidden=true;render();};
    tabs.append(b);
  });
-$('workspace').hidden=false;$('eventtitle').textContent=d.name;$('viewclass').value=d.className;$('viewplayers').value=d.players.length;$('viewrounds').value=d.rounds;let waiting=!!d.awaitingNextRound;$('phase').textContent=d.completed?'大会終了':waiting?'進行：次回戦準備':d.currentRound?'進行：第'+d.currentRound+'回戦':'進行：第1回戦準備';$('status').textContent=d.completed?'大会終了：最終結果を確認してください。':waiting?`第${d.currentRound}回戦を確定しました。次回戦から棄権する参加者を確認して［第${d.currentRound+1}回戦の組合せを作成］を押してください。　✓ 自動保存`:d.currentRound?`現在：第${d.currentRound}回戦　勝敗を入力して［入力完了］を押してください。　✓ 自動保存`:'当日の欠席者を棄権にチェックしてから［第1回戦の組合せを作成］を押してください。　✓ 自動保存';$('start').hidden=d.completed||(!waiting&&!!d.currentRound);$('start').disabled=d.completed||(!waiting&&!!d.currentRound);$('start').textContent=waiting?`第${d.currentRound+1}回戦の組合せを作成`:'第1回戦の組合せを作成';$('complete').disabled=!d.currentRound||d.completed||waiting||!!d.results[d.currentRound];$('undo').disabled=!d.currentRound||!!d.undoUsed||(d.currentRound===1&&!d.results[1]?false:(d.completed||waiting?!d.results[d.currentRound]:d.currentRound<2||!d.results[d.currentRound-1]));
+$('workspace').hidden=false;$('eventtitle').textContent=d.name;$('viewclass').value=d.className;$('viewplayers').value=d.players.length;$('viewrounds').value=d.rounds;let waiting=!!d.awaitingNextRound;$('phase').textContent=d.completed?'大会終了':waiting?'進行：次回戦準備':d.currentRound?'進行：第'+d.currentRound+'回戦':'進行：第1回戦準備';$('status').textContent=d.completed?'大会終了：最終結果を確認してください。':waiting?`第${d.currentRound}回戦を確定しました。次回戦から棄権する参加者を確認して［第${d.currentRound+1}回戦の組合せを作成］を押してください。　✓ 自動保存`:d.currentRound?`現在：第${d.currentRound}回戦　対戦相手を確認し、必要なら棄権を訂正して組合せを作り直してください。対局後に勝敗を入力して［入力完了］を押してください。　✓ 自動保存`:'当日の欠席者を棄権にチェックしてから［第1回戦の組合せを作成］を押してください。　✓ 自動保存';const pairingRound=waiting?d.currentRound+1:(d.currentRound||1);$('start').hidden=d.completed;$('start').disabled=d.completed;$('start').textContent=`第${pairingRound}回戦の組合せを作成`;$('complete').disabled=!d.currentRound||d.completed||waiting||!!d.results[d.currentRound];const undoRound=(d.completed||waiting)?d.currentRound:(d.currentRound>=2?d.currentRound-1:0);$('undo').disabled=!undoRound||!!d.undoUsed||!d.results[undoRound];
 let st=stats(),ranks=d.results&&Object.keys(d.results).length?rank():[],byNo=Object.fromEntries(ranks.map(x=>[x.no,x]));let ordered=[...d.players].sort((a,b)=>{
  const val=p=>{const x=byNo[p.no]||{};if(sortColumn==='NO')return p.no;if(sortColumn==='名前')return p.name;if(sortColumn==='棄権')return Number(!!p.withdrawn);if(sortColumn==='順位')return x.rank??999;if(sortColumn==='勝数')return x.wins??0;if(sortColumn==='負数')return x.losses??0;if(sortColumn==='直接対決')return x.direct??0;if(['SC','SB','MD'].includes(sortColumn))return x[sortColumn.toLowerCase()]??0;if(sortColumn==='備考')return x.note??'';const m=sortColumn.match(/^第(\d+)回戦 (相手番号|勝敗)$/);if(m){const r=Number(m[1]);return m[2]==='相手番号'?(opponent(p.no,r)||0):(resultFor(p.no,r)||'')}return p.no};
  const av=val(a),bv=val(b);const cmp=typeof av==='string'?String(av).localeCompare(String(bv),'ja'):av-bv;return (sortAscending?cmp:-cmp)||a.no-b.no;
 });let meta=d.pairingMeta?.[d.currentRound];if(meta&&d.currentRound>1){let info=el('div');info.className='pairing-info';let adj=meta.lookaheadAdjusted?'【先読みで組合せ調整あり】':'【先読み確認済み】';info.textContent=`${adj} 第${d.currentRound}回戦：最大勝数差 ${meta.maxGap}　${meta.reason}`;$('matches').replaceChildren(info)}else $('matches').replaceChildren();let t=el('table'),head=el('tr');for(let h of ['NO','名前','棄権',...Array.from({length:d.currentRound||0},(_,i)=>['第'+(i+1)+'回戦 相手番号','第'+(i+1)+'回戦 勝敗']).flat(),'順位','勝数','負数','直接対決','SC','SB','MD','備考']){let th=el('th',h.replace(' 相手番号','\n相手\n番号').replace(' 勝敗','\n勝敗'));if(h==='NO')th.className='no';if(h==='名前')th.className='name';if(h==='棄権')th.className='withdraw-cell';if(h.endsWith(' 相手番号'))th.className='opponent-cell';if(h.endsWith(' 勝敗'))th.className='result-cell';if(['順位','勝数','負数','SC','SB','MD'].includes(h))th.className='stat-cell';if(h==='直接対決')th.className='direct-cell';if(h==='備考')th.className='note';th.title=h+'で並べ替え';th.style.cursor='pointer';th.onclick=()=>{if(sortColumn===h)sortAscending=!sortAscending;else{sortColumn=h;sortAscending=true}sortByRank=sortColumn==='順位';render()};if(sortColumn===h)th.setAttribute('aria-sort',sortAscending?'ascending':'descending');head.append(th)}t.append(head);
-for(let p of ordered){let x=byNo[p.no],tr=el('tr');if(d.completed&&x?.rank<=3)tr.className='rank'+x.rank;let no=el('td',p.no);no.className='no';let name=el('td',p.name);name.className='name';if(p.withdrawn){no.classList.add('withdraw-gray');name.classList.add('withdraw-gray')}tr.append(no,name);let w=el('td');let check=el('input');check.type='checkbox';check.checked=!!p.withdrawn;{const targetRound=d.currentRound?(waiting?d.currentRound+1:d.currentRound):1;check.disabled=d.completed||(!waiting&&!!d.currentRound)||(p.withdrawn&&p.withdrawnRound<targetRound);check.onchange=()=>{if(p.withdrawn&&p.withdrawnRound<targetRound){check.checked=true;alert('過去の回戦で確定した棄権は解除できません。');return;}p.withdrawn=check.checked;p.withdrawnRound=check.checked?targetRound:0;if(check.checked&&!waiting&&d.currentRound){const opp=opponent(p.no,d.currentRound);if(opp)delete d.drafts[key(p.no,opp)];}showInputErrors([]);save();render()}};w.className='withdraw-cell';w.append(check);tr.append(w);
+for(let p of ordered){let x=byNo[p.no],tr=el('tr');if(d.completed&&x?.rank<=3)tr.className='rank'+x.rank;let no=el('td',p.no);no.className='no';let name=el('td',p.name);name.className='name';if(p.withdrawn){no.classList.add('withdraw-gray');name.classList.add('withdraw-gray')}tr.append(no,name);let w=el('td');let check=el('input');check.type='checkbox';check.checked=!!p.withdrawn;{const targetRound=d.currentRound?(waiting?d.currentRound+1:d.currentRound):1;check.disabled=d.completed||(p.withdrawn&&p.withdrawnRound<targetRound);check.onchange=()=>{if(p.withdrawn&&p.withdrawnRound<targetRound){check.checked=true;alert('過去の回戦で確定した棄権は解除できません。');return;}p.withdrawn=check.checked;p.withdrawnRound=check.checked?targetRound:0;if(check.checked&&!waiting&&d.currentRound){const opp=opponent(p.no,d.currentRound);if(opp)delete d.drafts[key(p.no,opp)];}showInputErrors([]);save();render()}};w.className='withdraw-cell';w.append(check);tr.append(w);
 for(let round=1;round<=d.currentRound;round++){let opp=opponent(p.no,round);let pairNow=d.pairings[round]?.find(q=>q.p1===p.no||q.p2===p.no);let opponentCell=el('td',(opp||''));opponentCell.className='opponent-cell';if(pairNow?.special){opponentCell.classList.add('special-pairing');opponentCell.title=pairNow.specialReason}else if(pairNow?.reason)opponentCell.title=pairNow.reason;if(p.withdrawn&&round>=(p.withdrawnRound||d.currentRound||1))opponentCell.classList.add('withdraw-gray');tr.append(opponentCell);let cell=el('td');cell.className='result-cell';if(opp&&round===d.currentRound&&!d.completed&&!p.withdrawn&&!d.players.find(x=>x.no===opp)?.withdrawn&&!d.drafts[key(p.no,opp)])cell.classList.add('pending-result');if(p.withdrawn&&round>=(p.withdrawnRound||d.currentRound||1))cell.classList.add('withdraw-gray');if(round===d.currentRound&&!d.completed&&!d.results[round]){if(opp===0){cell.textContent='〇'}else if(opp){let sel=el('select');let k=key(p.no,opp);for(let [v,label] of [['',''],['W','〇'],['L','×']]){let opt=el('option',label);opt.value=v;sel.append(opt)}let chosen=d.drafts[k]||'';sel.value=chosen?(Number(chosen)===p.no?'W':'L'):'';sel.disabled=!!p.withdrawn||!!d.players.find(x=>x.no===opp)?.withdrawn;sel.setAttribute('aria-label',`${p.no}番 ${p.name} 第${round}回戦 勝敗`);sel.dataset.player=String(p.no);sel.dataset.opp=String(opp);sel.onchange=()=>{if(sel.value)d.drafts[k]=String(sel.value==='W'?p.no:opp);else delete d.drafts[k];save();showInputErrors([]);render();const next=document.querySelector(`select[data-player=\"${p.no}\"]`);if(next)next.focus();updateInputAssist()};sel.onkeydown=e=>{if(e.key==='o'||e.key==='O'||e.key==='〇'||e.key==='○'){e.preventDefault();sel.value='W';sel.onchange()}else if(e.key==='x'||e.key==='X'||e.key==='×'){e.preventDefault();sel.value='L';sel.onchange()}else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();sel.value='';sel.onchange()}};cell.append(sel)}}else cell.textContent=resultFor(p.no,round);tr.append(cell)}for(let [i,val] of [x?.rank??'',st[p.no].wins,st[p.no].losses,x?.directText??'',x?.sc??0,x?.sb??0,x?.md??0,x?.note??''].entries()){let cell=el('td',String(val));cell.className=i===7?'note':i===3?'direct-cell':'stat-cell';tr.append(cell)}t.append(tr)}$('matches').append(t);$('sortRank').textContent=sortByRank?'NO順':'順位順';updateInputAssist();if(currentAux)showAux(currentAux)}
 // 転記は別ウィンドウ。開くたびに選択中クラスの最新データを表示する。
 function openTransferWindow(){
@@ -207,7 +207,7 @@ function showAux(kind){if(!d)return;currentAux=kind;let body=$('auxBody');body.r
       '「大会準備」で「新しい大会を開始」を選び、先に大会フォルダを指定し、次に準備用Excelを選択してから「第1回戦の組合せを作成」を押します。',
       '「大会進行」でクラスのタブを選択し、対局の勝敗（〇・×）を入力します。一方の結果を入力すると相手側にも反映されます。',
       '全対局の入力後に「入力完了」を押すと、その回戦だけを確定します。次回戦からの棄権者を確認してから「第○回戦の組合せを作成」を押してください。',
-      '「転記」で掲示用の相手番号、「回戦履歴」で過去の結果、「順位順」で現在の順位順表示、「元に戻す」で直前の入力完了の取り消しができます。',
+      '「転記」で掲示用の相手番号、「回戦履歴」で過去の結果、「順位順」で現在の順位順表示、「入力完了取消」で直前の入力完了を取り消せます。',
       'ヘルプ内の「自動入力」は未入力の対局だけにランダムで結果を入れるデモ・テスト用です。実際の大会結果の入力には使用しないでください。'
     ]],
     ['2．対戦相手の決め方（現在のWeb版の実装）',[
@@ -281,37 +281,26 @@ function showCheck(){const errors=checkCurrentRound();showInputErrors(errors);al
 
 
 $('undo').onclick=async()=>{
- if(!d||!d.currentRound||d.undoUsed)return say('直前の入力完了は既に取り消しました。再度入力完了するまで戻せません。');
+ if(!d||!d.currentRound||d.undoUsed)return say('取り消せる直前の入力完了がありません。');
  if(!yukFolder.handle)return say('大会フォルダを選択してから操作してください');
- // 第1回戦は、勝敗確定前なら組合せだけを取り消して準備状態へ戻せる。
- if(d.currentRound===1&&!d.results[1]&&!d.awaitingNextRound&&!d.completed){
-  if(!confirm('第1回戦の組合せを取り消して、組合せ作成前の状態に戻しますか？'))return;
-  try{
-   await yukFolder.flush();
-   delete d.pairings[1]; if(d.pairingMeta)delete d.pairingMeta[1];
-   d.currentRound=0; d.drafts={}; d.awaitingNextRound=false; d.completed=false;
-   save(); await yukFolder.flush(); render();
-   const blob=await exportTournamentExcel(tournamentClasses,rankForClass);
-   await yukFolder.write('対戦表_大会用.xlsx',blob);
-   say('第1回戦の組合せを取り消しました。棄権者を確認してから、もう一度［第1回戦の組合せを作成］を押してください。');
-  }catch(err){say('元に戻す処理でエラーが発生しました：'+err.message)}
-  return;
- }
- const finalRound=!!d.completed,prev=(finalRound||d.awaitingNextRound)?d.currentRound:d.currentRound-1;
- if(!d.results[prev])return say('取り消せる直前回戦がありません');
- const question=finalRound?`大会終了を取り消し、第${prev}回戦の入力画面に戻しますか？`:d.awaitingNextRound?`第${prev}回戦の入力完了を取り消し、勝敗入力画面に戻しますか？`:`第${prev}回戦の入力完了を取り消しますか？ 現在の第${d.currentRound}回戦の組合せと入力は破棄されます。`;
- if(!confirm(question))return;
+ const waiting=!!d.awaitingNextRound,finalRound=!!d.completed;
+ const prev=(finalRound||waiting)?d.currentRound:(d.currentRound>=2?d.currentRound-1:0);
+ if(!prev||!d.results[prev])return say('取り消せる直前回戦がありません');
+ if(!confirm(`第${prev}回戦の入力完了を取り消しますか？`))return;
  try{
   await yukFolder.flush();
   const stamp=historyStamp();
-  await yukFolder.write('大会進行データ_元に戻す前_'+stamp+'.json',new Blob([JSON.stringify({classes:tournamentClasses,active:activeClassIndex},null,2)],{type:'application/json'}));
-  const rs=d.results[prev];if(!finalRound&&!d.awaitingNextRound)delete d.pairings[d.currentRound];delete d.results[prev];d.currentRound=prev;d.completed=false;d.awaitingNextRound=false;d.undoUsed=true;d.drafts={};
+  await yukFolder.write('大会進行データ_入力完了取消前_'+stamp+'.json',new Blob([JSON.stringify({classes:tournamentClasses,active:activeClassIndex},null,2)],{type:'application/json'}));
+  const rs=d.results[prev];
+  // 次回戦の組合せが作成済みなら、組合せ・入力途中の勝敗・組合せ理由をすべて破棄する。
+  if(!finalRound&&!waiting&&d.currentRound>prev){delete d.pairings[d.currentRound];if(d.pairingMeta)delete d.pairingMeta[d.currentRound];}
+  delete d.results[prev];d.currentRound=prev;d.completed=false;d.awaitingNextRound=false;d.undoUsed=true;d.drafts={};
   for(const r of rs)if(r.p2&&!r.bye)d.drafts[key(r.p1,r.p2)]=String(r.winner);
   save();await yukFolder.flush();render();
   const blob=await exportTournamentExcel(tournamentClasses,rankForClass);
   await yukFolder.write('対戦表_大会用.xlsx',blob);
-  say(`第${prev}回戦の入力画面に戻しました。大会フォルダにバックアップを保存し、大会用Excelを更新しました。棄権を確認してください。`);
- }catch(err){say('元に戻す処理でエラーが発生しました：'+err.message+'。大会フォルダのバックアップを確認してください。')}
+  say(`第${prev}回戦の入力完了を取り消しました。勝敗を修正して、もう一度［入力完了］を押してください。`);
+ }catch(err){say('入力完了取消でエラーが発生しました：'+err.message+'。大会フォルダのバックアップを確認してください。')}
 };
 
 document.addEventListener('keydown',e=>{if(e.key==='F5'||e.key==='F6'){if($('workspace').hidden)return;e.preventDefault();if(e.key==='F5')autoFillCurrentRound();else showCheck();}});
@@ -330,7 +319,7 @@ function save(){if(d){
  if(window.yukFolder?.handle)window.yukFolder.queueState({classes:tournamentClasses,active:activeClassIndex});
 }}function validate(x){if(!x||!Array.isArray(x.players)||!x.players.length||typeof x.results!=='object'||typeof x.pairings!=='object'||!Number.isInteger(x.rounds))throw Error('大会データ形式が不正です')}
 $('create').onclick=()=>{try{let names=$('names').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),rounds=Number($('rounds').value);if(names.length<2||names.length>50||new Set(names).size!==names.length||rounds<3||rounds>10||rounds>names.length-1)throw Error('人数2～50名・名前重複なし・回戦3～10かつ人数−1以下にしてください');if(!confirm('現在の大会データを新規大会で置き換えますか？'))return;tournamentClasses=[];activeClassIndex=0;d={name:$('tname').value,className:$('cname').value,rounds,players:names.map((name,i)=>({no:i+1,name,withdrawn:false,withdrawnRound:0})),pairings:{},pairingMeta:{},results:{},drafts:{},currentRound:0,awaitingNextRound:false,completed:false};save();render();$('navprogress').click();say('新規大会を作成しました')}catch(e){say(e.message)}};
-$('start').onclick=async()=>{try{const round=d.currentRound?(d.awaitingNextRound?d.currentRound+1:0):1;if(!round)return;const label=`第${round}回戦`;if(!confirm(`${label}の組合せを作成しますか？ 棄権者の確認は済んでいますか？`))return;d.pairings[round]=makePairings(round);d.currentRound=round;d.awaitingNextRound=false;d.drafts={};save();await yukFolder.flush();try{await exportTournamentExcel(tournamentClasses,rankForClass)}catch(_){/* state remains saved; manual Excel output is still available */}render();say(`${label}を作成しました`)}catch(e){say(e.message)}};
+$('start').onclick=async()=>{try{const round=d.currentRound?(d.awaitingNextRound?d.currentRound+1:d.currentRound):1;if(!round||d.completed)return;const label=`第${round}回戦`;/* 同じ回戦を再作成する場合は、その回戦の組合せと入力途中の勝敗を全て破棄して最初から組み直す。 */delete d.pairings[round];if(d.pairingMeta)delete d.pairingMeta[round];d.drafts={};d.pairings[round]=makePairings(round);d.currentRound=round;d.awaitingNextRound=false;save();await yukFolder.flush();try{await exportTournamentExcel(tournamentClasses,rankForClass)}catch(_){/* state remains saved; manual Excel output is still available */}render();say(`${label}の組合せを作成しました。全員の対戦相手を確認してから対局を開始してください。`)}catch(e){say(e.message)}};
 let lastHistoryStamp='',historySerial=0;function historyStamp(){const now=new Date(),pad=n=>String(n).padStart(2,'0');const base=now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+pad(now.getHours())+pad(now.getMinutes())+pad(now.getSeconds());historySerial=base===lastHistoryStamp?historySerial+1:0;lastHistoryStamp=base;return base+(historySerial?'_'+String(historySerial).padStart(2,'0'):'')}
 $('complete').onclick=async()=>{let beforeCommit;try{let errors=checkCurrentRound();if(errors.length){showInputErrors(errors);return;}showInputErrors([]);let round=d.currentRound,rs=[];for(let p of d.pairings[round]){if(!p.p2){rs.push({p1:p.p1,p2:0,winner:p.p1,bye:true});continue}let a=d.players.find(x=>x.no===p.p1),b=d.players.find(x=>x.no===p.p2),winner=Number(d.drafts[key(p.p1,p.p2)]);if(a.withdrawn&&b.withdrawn)throw Error(`${p.p1}・${p.p2}が両方棄権しています。試作版では未対応です`);if(a.withdrawn)winner=p.p2;if(b.withdrawn)winner=p.p1;if(!winner)throw Error(`${p.p1}－${p.p2}の勝敗が未入力です`);rs.push({p1:p.p1,p2:p.p2,winner,bye:false})}if(!confirm(`${round}回戦を確定しますか？`))return;beforeCommit=JSON.stringify(d);d.results[round]=rs;d.undoUsed=false;d.drafts={};if(round>=d.rounds){d.completed=true;d.awaitingNextRound=false}else{d.awaitingNextRound=true}// 次回戦の組合せは自動作成しない。棄権者確認後に［第○回戦を作成］で決定する。
  await yukFolder.queueState({classes:tournamentClasses,active:activeClassIndex});
@@ -347,13 +336,13 @@ async function restoreFromFile(file){if(!file)return;try{let x=JSON.parse(await 
 // 大会進行は利用者が選んだ大会フォルダのファイルだけから復元する。
 $('prep').hidden=false;$('workspace').hidden=true;
 const showPrepMode=mode=>{ $('prepChoices').hidden=!!mode;$('newPrep').hidden=mode!=='new';$('resumePrep').hidden=mode!=='resume';};
-$('newTournament').onclick=()=>{showPrepMode('new');$('newExcelRow').hidden=true;$('excelNotice').hidden=true;$('excelCreate').hidden=true;$('excelCreate').disabled=true;$('excelPath').value='';$('excelMock').value='';excelPreparation=null;yukFolder.disconnect();$('folderNotice').textContent='まず空の大会フォルダを選択してください。';};
+$('newTournament').onclick=()=>{showPrepMode('new');$('newExcelRow').hidden=true;$('excelNotice').hidden=true;$('excelCreate').hidden=true;$('excelCreate').disabled=true;$('excelPath').value='';$('excelMock').value='';excelPreparation=null;yukFolder.disconnect();$('folderNotice').textContent='大会用データを保存するための新しいフォルダを作って選択してください。';};
 $('resumeTournament').onclick=async()=>{showPrepMode('resume');$('resumeLast').disabled=true;try{const info=await yukFolder.getLastInfo();$('lastFolderNotice').textContent=info?'前回の大会フォルダ：'+info.name+'。再開する場合は下のボタンを押してください。':'前回の大会フォルダは記憶されていません。別のフォルダを選択してください。';$('resumeLast').disabled=!info}catch(e){$('lastFolderNotice').textContent='前回のフォルダを確認できません：'+e.message}};
 document.querySelectorAll('.backPrep').forEach(b=>b.onclick=()=>{yukFolder.disconnect();showPrepMode(null)});
 async function openSaved(data){if(!data)throw Error('このフォルダには保存済みの大会進行データがありません');data.classes.forEach(validate);tournamentClasses=data.classes;activeClassIndex=Math.min(data.active||0,data.classes.length-1);d=tournamentClasses[activeClassIndex];await yukFolder.remember();render();$('navprogress').click();say('大会フォルダから再開しました')}
 $('resumeLast').onclick=async()=>{try{const data=await yukFolder.restoreLast();if(!data)throw Error('保存済みの大会進行データがありません');if(!confirm('前回の大会「'+data.classes[0].name+'」を再開しますか？'))return;await openSaved(data)}catch(e){$('lastFolderNotice').textContent='再開できません：'+e.message+'。必要なら別の大会フォルダを選択してください。'}};
 $('resumeOther').onclick=async()=>{try{const data=await yukFolder.pick();if(!data)throw Error('保存済みの大会進行データがありません');if(!confirm('「'+data.classes[0].name+'」を再開しますか？'))return;await openSaved(data)}catch(e){$('lastFolderNotice').textContent='再開できません：'+e.message}};
-$('folderMock').onclick=async()=>{try{const data=await yukFolder.pick();if(data||await yukFolder.hasTournamentFiles()){yukFolder.disconnect();throw Error('既存の大会ファイルがあります。空のフォルダを選択してください。')}await yukFolder.remember();$('folderNotice').textContent='大会フォルダ：'+yukFolder.handle.name+'（選択済み）';$('newExcelRow').hidden=false;$('excelNotice').hidden=false;say('準備用Excelを選択してください')}catch(e){if(e.name!=='AbortError')say('フォルダ選択：'+e.message)}};
+$('folderMock').onclick=async()=>{try{await yukFolder.pick();await yukFolder.remember();$('folderNotice').textContent='大会フォルダ：'+yukFolder.handle.name+'（選択済み）';$('newExcelRow').hidden=false;$('excelNotice').hidden=false;say('準備用Excelを選択してください')}catch(e){if(e.name!=='AbortError')say('フォルダ選択：'+e.message)}};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
 // Windows版準備画面のUI検証: 未実装のExcel機能を成功したように表示しない。
@@ -370,7 +359,6 @@ $('excelMock').addEventListener('change', async e=>{
 $('excelCreate').onclick=async()=>{
  if(!excelPreparation)return;
  if(!window.yukFolder?.handle)return say('先に大会フォルダを選択してください。');
- if(await yukFolder.hasTournamentFiles())return say('このフォルダには既存の大会ファイルがあります。既存大会は「大会フォルダを選択／再開」で開いてください。新規大会は空のフォルダを指定してください。');
  tournamentClasses=excelPreparation.classes.map(c=>{
   // V127: 初回に名簿そのものをシャッフルし、その順番で大会NOを確定する。
   const shuffled=[...c.players];
