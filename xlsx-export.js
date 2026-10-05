@@ -75,6 +75,24 @@ function specialPairStyle(styles,base){
  cellXfs.append(xf);cellXfs.setAttribute('count',String(cellXfs.children.length));
  return String(cellXfs.children.length-1);
 }
+function bottomBorderStyle(styles,base){
+ const ns=styles.documentElement.namespaceURI;
+ const cellXfs=styles.getElementsByTagName('cellXfs')[0];
+ const borders=styles.getElementsByTagName('borders')[0];
+ const xfs=[...cellXfs.children].filter(x=>x.localName==='xf');
+ const src=xfs[Number(base)]||xfs[0];
+ const srcBorder=borders.children[Number(src.getAttribute('borderId')||0)]||borders.children[0];
+ const border=srcBorder.cloneNode(true);
+ let bottom=[...border.children].find(x=>x.localName==='bottom');
+ if(!bottom){bottom=styles.createElementNS(ns,'bottom');let diag=[...border.children].find(x=>x.localName==='diagonal');border.insertBefore(bottom,diag||null)}
+ bottom.setAttribute('style','medium');
+ for(const c of [...bottom.children])bottom.removeChild(c);
+ const color=styles.createElementNS(ns,'color');color.setAttribute('auto','1');bottom.append(color);
+ borders.append(border);borders.setAttribute('count',String(borders.children.length));
+ const xf=src.cloneNode(true);xf.setAttribute('borderId',String(borders.children.length-1));xf.setAttribute('applyBorder','1');
+ cellXfs.append(xf);cellXfs.setAttribute('count',String(cellXfs.children.length));
+ return String(cellXfs.children.length-1);
+}
 function fixSummaryLayout(doc,stat,styles,noteWidth){
  const ns=doc.documentElement.namespaceURI,last=stat+7;
  const titles=['順位','勝数','負数','直接対決','SC','SB','MD','備考'];
@@ -162,6 +180,19 @@ function sheetUpdate(entries,paths,cls,withRanking,rankCallback){
    const ref=c.getAttribute('r')||'',m=ref.match(/^([A-Z]+)(\d+)$/);if(!m)continue;
    const cc=cellColumn(m[1]);
    if(!(reasonRows.has(rr)&&cc===2))c.remove();
+  }
+ }
+ // 参加者表の最終行は、B列から備考列まで下罫線を太線にして表を明確に閉じる。
+ // 元のフォント・塗り・左右/上罫線はそのまま残し、bottom だけ medium にする。
+ const bottomStyleCache=new Map();
+ {
+  const row=getRow(doc,lastTableRow);
+  for(let cc=2;cc<=stat+7;cc++){
+   const ref=colName(cc)+lastTableRow,c=[...row.children].find(v=>v.localName==='c'&&v.getAttribute('r')===ref);
+   if(!c)continue;
+   const base=c.getAttribute('s')||'0';
+   if(!bottomStyleCache.has(base))bottomStyleCache.set(base,bottomBorderStyle(styles,base));
+   c.setAttribute('s',bottomStyleCache.get(base));
   }
  }
  // 特殊組合せセルは fixSummaryLayout 後も専用書式を維持する。
