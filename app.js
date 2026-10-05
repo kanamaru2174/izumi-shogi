@@ -275,6 +275,7 @@ function showInputErrors(errors){
  const title=el('strong','入力エラー：'+errors.length+'件の問題があります');box.append(title);
  box.append(el('p','以下の対局を確認してください。すべて解消するまで次の回戦には進めません。'));
  const list=el('ul');for(const error of errors)list.append(el('li',error));box.append(list);
+ const close=document.createElement('button');close.type='button';close.textContent='閉じる';close.onclick=()=>{box.hidden=true;};box.append(close);
  box.scrollIntoView({behavior:'smooth',block:'center'});
 }
 function showCheck(){const errors=checkCurrentRound();showInputErrors(errors);alert(errors.length?'F6 入力チェック（'+errors.length+'件）\n\n'+errors.join('\n'):'全行をチェックしました。問題はありません。');say(errors.length?'F6：'+errors.length+'件の問題があります':'F6：問題はありません');}
